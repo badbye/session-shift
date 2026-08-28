@@ -1,6 +1,7 @@
 // session-store.ts — Chrome storage helpers for session isolation (MV3).
 
 import type { Session } from './types.js'
+import { withConfigMutation } from './config-mutation-queue.js'
 
 export type CookieStoreEntry = {
   name?: string
@@ -10,6 +11,7 @@ export type CookieStoreEntry = {
   path?: string | null
   secure?: boolean
   httpOnly?: boolean
+  sameSite?: string | null
 }
 type CookieStore = Record<string, CookieStoreEntry>
 
@@ -34,6 +36,26 @@ export async function getProfiles(): Promise<Session[]> {
 
 export async function setProfiles(list: Session[]): Promise<void> {
   await chrome.storage.local.set({ [PROFILES_KEY]: list });
+}
+
+// All profile-list read/modify/write operations share one service-worker queue.
+// Popup pages can be open in multiple browser windows, so a popup-local queue
+// is not sufficient to protect the single global `profiles` record.
+export function withProfileMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  return withConfigMutation(mutation);
+}
+
+export async function createSession(name: string, hue?: number): Promise<Session> {
+  return withProfileMutation(async () => {
+    const profiles = await getProfiles();
+    const session: Session = {
+      id: `session_${crypto.randomUUID()}`,
+      name: name.trim(),
+      ...(hue === undefined ? {} : { hue }),
+    };
+    await setProfiles([...profiles, session]);
+    return session;
+  });
 }
 
 export function isInternalSession(sessionId: string): boolean {
@@ -72,33 +94,37 @@ export async function duplicateSession(
   sessionId: string,
   buildDuplicateName: (sourceName: string) => string = (name) => `${name} (copy)`
 ): Promise<Session> {
-  const list = await getProfiles();
-  const source = list.find(s => s.id === sessionId);
-  if (!source) throw new Error(`Session not found: ${sessionId}`);
+  return withProfileMutation(async () => {
+    const list = await getProfiles();
+    const source = list.find(s => s.id === sessionId);
+    if (!source) throw new Error(`Session not found: ${sessionId}`);
 
-  const newId = 'session_' + crypto.randomUUID();
-  const newSession = { id: newId, name: buildDuplicateName(source.name), hue: source.hue };
+    const newId = 'session_' + crypto.randomUUID();
+    const newSession = { id: newId, name: buildDuplicateName(source.name), hue: source.hue };
 
-  // List-then-store ordering: write the profiles reference BEFORE the cookie store.
-  // A GC snapshot taken mid-flight then sees a referenced (recoverable) store, never
-  // an unreferenced one to delete — so orphan GC can't collect a live new profile's
-  // cookies. (The reverse order created a window where the store existed with no
-  // profile entry and looked like an orphan.)
-  await setProfiles([...list, newSession]);
-  const store = await getCookieStore(sessionId);
-  await setCookieStore(newId, { ...store });
-  return newSession;
+    // List-then-store ordering: write the profiles reference BEFORE the cookie store.
+    // A GC snapshot taken mid-flight then sees a referenced (recoverable) store, never
+    // an unreferenced one to delete — so orphan GC can't collect a live new profile's
+    // cookies. (The reverse order created a window where the store existed with no
+    // profile entry and looked like an orphan.)
+    await setProfiles([...list, newSession]);
+    const store = await getCookieStore(sessionId);
+    await setCookieStore(newId, { ...store });
+    return newSession;
+  });
 }
 
 export async function updateSessionHue(sessionId: string, hue: number): Promise<void> {
-  const list = await getProfiles();
-  let changed = false;
-  const patched = list.map(s => {
-    if (s.id !== sessionId) return s;
-    changed = true;
-    return { ...s, hue };
+  await withProfileMutation(async () => {
+    const list = await getProfiles();
+    let changed = false;
+    const patched = list.map(s => {
+      if (s.id !== sessionId) return s;
+      changed = true;
+      return { ...s, hue };
+    });
+    if (changed) await setProfiles(patched);
   });
-  if (changed) await setProfiles(patched);
 }
 
 export async function deleteSessionData(sessionId: string): Promise<void> {

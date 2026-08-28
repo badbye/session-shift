@@ -1,4 +1,4 @@
-import { serializeCookieHeader, normalizeCookiePath, type SerializeOptions } from '../lib/cookie-parser.js';
+import { serializeCookieHeader, normalizeCookiePath, cookieMatchesRequest, type SerializeOptions } from '../lib/cookie-parser.js';
 import type { CookieStoreEntry } from '../lib/session-store.js';
 import type { DNRRule } from '../lib/types.js';
 import { getEtld1 } from '../lib/public-suffix.js';
@@ -8,6 +8,8 @@ type CookieRuleScope = {
   host: string
   path: string
 }
+
+type CookieRequestScheme = 'http' | 'https' | 'ws' | 'wss'
 
 type BuildRuleOptions = {
   tabId: number
@@ -36,14 +38,14 @@ function escapeRegex(value: string): string {
   return value.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&');
 }
 
-function exactHostRegexFilter(scheme: 'https' | 'http', host: string, path: string): string {
+function exactHostRegexFilter(scheme: CookieRequestScheme, host: string, path: string): string {
   const hostPattern = escapeRegex(host);
   if (path === '/') return `^${scheme}://${hostPattern}(?::[0-9]+)?/`;
   const pathPattern = escapeRegex(path);
   return `^${scheme}://${hostPattern}(?::[0-9]+)?${pathPattern}(?:[/?#]|$)`;
 }
 
-function domainUrlFilter(scheme: 'https' | 'http', path: string): string {
+function domainUrlFilter(scheme: CookieRequestScheme, path: string): string {
   if (path === '/') return `|${scheme}://`;
   return `|${scheme}://*${pathFilterSuffix(path)}`;
 }
@@ -132,8 +134,8 @@ function buildRequestStripCondition(
 }
 
 // Response-side `set-cookie: remove` condition. The caller controls resource
-// types because top-level navigation redirects need Chrome's jar write to happen
-// before the redirected request is sent.
+// types so navigation and subresource responses can both be kept out of the
+// shared jar while webRequest captures the original header for the profile.
 function buildResponseStripCondition(
   boundHost: string | null,
   scheme: 'https' | 'http' | null,
@@ -147,7 +149,7 @@ function buildResponseStripCondition(
 
 function buildCookieCondition(
   scope: CookieRuleScope,
-  scheme: 'https' | 'http' | null,
+  scheme: CookieRequestScheme | null,
   resourceTypes: chrome.declarativeNetRequest.ResourceType[]
 ): chrome.declarativeNetRequest.RuleCondition {
   if (scheme && scope.type === 'host') {
@@ -163,14 +165,34 @@ function buildCookieCondition(
   return { requestDomains: [scope.host], resourceTypes };
 }
 
-function buildBridgeNavigationStripCondition(
+function cookieRequestSchemes(
+  options: BuildRuleOptions,
+): CookieRequestScheme[] {
+  if (options.boundHost) return [options.scheme ?? 'https'];
+  // A Profile is global, so its cookies may be needed by a subresource whose
+  // scheme differs from the top-level tab (for example https API calls from an
+  // http page). WebSocket URLs use ws/wss and are otherwise still covered by
+  // the tab-wide Cookie strip, so include those variants whenever websocket
+  // requests are in the rule set.
+  const schemes: CookieRequestScheme[] = ['http', 'https'];
+  if (options.resourceTypes.some((type) => String(type) === 'websocket')) schemes.push('ws', 'wss');
+  return schemes;
+}
+
+function allowsSecureCookies(scheme: CookieRequestScheme, host?: string): boolean {
+  return scheme === 'https' || scheme === 'wss'
+    || (scheme === 'http' && host?.toLowerCase() === 'localhost');
+}
+
+export function buildBridgeNavigationStripCondition(
   bridgeNavigationUrl: string
 ): chrome.declarativeNetRequest.RuleCondition | null {
   try {
     const url = new URL(bridgeNavigationUrl);
     if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+    const exactUrl = `${url.origin}${url.pathname}${url.search}`;
     return {
-      regexFilter: exactHostRegexFilter(url.protocol === 'https:' ? 'https' : 'http', url.hostname, '/'),
+      regexFilter: `^${escapeRegex(exactUrl)}$`,
       resourceTypes: ['main_frame', 'sub_frame'],
     };
   } catch {
@@ -180,10 +202,10 @@ function buildBridgeNavigationStripCondition(
 
 export function buildDnrRulesForCookieStore(options: BuildRuleOptions): DNRRule[] {
   // Split the legacy combined rule so request and response sides can scope
-  // independently. Request-side stripping is tab-scoped for all subresources so
-  // the shared jar never competes with an isolated cookie on same-site fetches
-  // or later navigations; response-side stripping stays strict and the auth
-  // bridge handles the timing gap between capture and the next navigation.
+  // independently. Request-side stripping is tab-scoped for every request so
+  // the shared jar never competes with an isolated cookie; response-side
+  // stripping covers every resource type; the auth bridge handles the timing gap
+  // between capture and the next navigation.
   const requestStripResourceTypes = options.requestStripResourceTypes ?? options.resourceTypes;
   const requestCondition = buildRequestStripCondition(
     options.boundHost, options.scheme, requestStripResourceTypes, options.firstPartyDomain);
@@ -217,7 +239,7 @@ export function buildDnrRulesForCookieStore(options: BuildRuleOptions): DNRRule[
       bridgeNavigationCondition.tabIds = [options.tabId];
       addRules.push({
         id: options.ruleIds[addRules.length],
-        priority: 100,
+        priority: 1000,
         action: { type: 'modifyHeaders', requestHeaders: [{ header: 'Cookie', operation: 'remove' }] },
         condition: bridgeNavigationCondition,
       });
@@ -237,21 +259,113 @@ export function buildDnrRulesForCookieStore(options: BuildRuleOptions): DNRRule[
       );
       break;
     }
-    const requestScheme = options.scheme ?? 'https';
-    const requestUrl = `${requestScheme}://${scope.host}${scope.path}`;
-    const cookieStr = serializeCookieHeader(options.store, { ...options.serializeOpts, requestUrl });
-    if (!cookieStr) continue;
-    const condition = buildCookieCondition(scope, options.scheme, options.resourceTypes);
-    condition.tabIds = [options.tabId];
-    addRules.push({
-      id: options.ruleIds[addRules.length],
-      priority: 100 + scope.path.length * 2 + (scope.type === 'host' ? 1 : 0),
-      action: {
-        type: 'modifyHeaders',
-        requestHeaders: [{ header: 'Cookie', operation: 'set', value: cookieStr }],
-      },
-      condition,
-    });
+    for (const requestScheme of cookieRequestSchemes(options)) {
+      const requestUrl = `${requestScheme}://${scope.host}${scope.path}`;
+      const requestSerializeOpts = {
+        ...options.serializeOpts,
+        // The top-level tab scheme is not enough: an http page may call an
+        // https API, and wss is the secure counterpart of ws.
+        excludeSecure: !allowsSecureCookies(requestScheme, scope.host),
+        requestUrl,
+      };
+      const matchingStoreEntries = Object.entries(options.store).filter(([, entry]) =>
+        cookieMatchesRequest(entry, requestUrl));
+      const matchingEntries = matchingStoreEntries.map(([, entry]) => entry);
+      const noneEntries = matchingStoreEntries.filter(([, entry]) =>
+        (entry.sameSite ?? 'lax').toLowerCase() === 'none');
+      const protectedEntries = matchingStoreEntries.filter(([, entry]) =>
+        (entry.sameSite ?? 'lax').toLowerCase() !== 'none');
+      const protectedCookieStr = serializeCookieHeader(
+        Object.fromEntries(protectedEntries), requestSerializeOpts);
+      const noneCookieStr = serializeCookieHeader(
+        Object.fromEntries(noneEntries), requestSerializeOpts);
+      if (!protectedCookieStr && !noneCookieStr) continue;
+
+      const sameSiteProtected = matchingEntries.some((entry) =>
+        (entry.sameSite ?? 'lax').toLowerCase() !== 'none');
+      const navigationStore = Object.fromEntries(
+        matchingStoreEntries.filter(([, entry]) =>
+          ['none', 'lax'].includes((entry.sameSite ?? 'lax').toLowerCase())),
+      );
+      const supportsTopLevelNavigation = options.resourceTypes.some((type) => String(type) === 'main_frame');
+      const navigationCookieStr = supportsTopLevelNavigation && requestScheme !== 'ws' && requestScheme !== 'wss' && sameSiteProtected
+        ? serializeCookieHeader(navigationStore, requestSerializeOpts)
+        : '';
+      const ruleCount = (protectedCookieStr ? 1 : 0) + (noneCookieStr ? 1 : 0) + (navigationCookieStr ? 1 : 0);
+      if (addRules.length + ruleCount > options.ruleIds.length) {
+        console.warn(
+          `[dnr] rule budget (${options.ruleIds.length}) exhausted for tab ${options.tabId}; ` +
+          `${scopes.length - i} cookie scope(s) dropped`,
+        );
+        return addRules;
+      }
+
+      const priority = 100 + scope.path.length * 2 + (scope.type === 'host' ? 1 : 0);
+      // Keep the same-site and top-level-navigation rules disjoint on
+      // main_frame. Chrome can reject/ignore overlapping Cookie `set` rules when
+      // both are eligible for the same request; the navigation rule is the sole
+      // owner of Lax/unspecified top-level navigation injection.
+      const sameSiteResourceTypes = navigationCookieStr
+        ? options.resourceTypes.filter((type) => type !== 'main_frame')
+        : options.resourceTypes;
+      const addCookieRule = (
+        value: string,
+        initiatorDomains?: string[],
+        excludedInitiatorDomains?: string[],
+      ) => {
+        if (!value) return;
+        const condition = buildCookieCondition(scope, requestScheme, sameSiteResourceTypes);
+        if (initiatorDomains) condition.initiatorDomains = initiatorDomains;
+        if (excludedInitiatorDomains) condition.excludedInitiatorDomains = excludedInitiatorDomains;
+        condition.tabIds = [options.tabId];
+        addRules.push({
+          id: options.ruleIds[addRules.length],
+          priority,
+          action: {
+            type: 'modifyHeaders',
+            requestHeaders: [{ header: 'Cookie', operation: 'set', value }],
+          },
+          condition,
+        });
+      };
+      if (sameSiteProtected) {
+        // Same-site requests need BOTH subsets in one header mutation. A pair
+        // of same-priority `Cookie: set` rules would compete in DNR and Chrome
+        // may choose one value, dropping the other subset.
+        const sameSiteCookieStr = serializeCookieHeader(
+          Object.fromEntries(matchingStoreEntries), requestSerializeOpts);
+        addCookieRule(sameSiteCookieStr, [getEtld1(scope.host)]);
+        // SameSite=None remains available cross-site, but is excluded from the
+        // same-site rule's initiator domain so the two mutations are disjoint.
+        addCookieRule(noneCookieStr, undefined, [getEtld1(scope.host)]);
+      } else {
+        // A scope containing only SameSite=None has no competing protected
+        // subset, so one unrestricted rule is sufficient.
+        addCookieRule(noneCookieStr);
+      }
+
+      // Lax (including legacy cookies with no SameSite attribute) is allowed on
+      // top-level cross-site navigation. Keep this separate from the same-site
+      // rule so address-bar and extension-created navigations do not need an
+      // initiator domain, while Strict cookies remain withheld cross-site.
+      if (navigationCookieStr) {
+        const navigationCondition = buildCookieCondition(
+          scope,
+          requestScheme,
+          ['main_frame'] as chrome.declarativeNetRequest.ResourceType[],
+        );
+        navigationCondition.tabIds = [options.tabId];
+        addRules.push({
+          id: options.ruleIds[addRules.length],
+          priority,
+          action: {
+            type: 'modifyHeaders',
+            requestHeaders: [{ header: 'Cookie', operation: 'set', value: navigationCookieStr }],
+          },
+          condition: navigationCondition,
+        });
+      }
+    }
   }
 
   return addRules;

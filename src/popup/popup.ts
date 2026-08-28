@@ -3,9 +3,11 @@
 import { HUE_PALETTE, getSessionHue } from './popup-types.js';
 import type { PopupSession } from './popup-types.js';
 import { applyStoredTheme, cycleTheme } from './popup-theme.js';
-import { getSavedSessions, setSavedSessions } from './popup-session-storage.js';
+import { getSavedSessions } from './popup-session-storage.js';
 import { updateHero } from './popup-hero-updater.js';
 import { renderSessionList } from './popup-render-profile-list.js';
+import { createRuleView } from './popup-rule-view.js';
+import { getRules } from '../lib/rule-store.js';
 import { getLanguagePreference, createLocalizer, applyDocumentLocale, localizeDocument } from '../lib/localization.js';
 import type { Localizer } from '../lib/localization.js';
 
@@ -55,12 +57,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     const currentTab = await getCurrentTab();
 
-    if (!currentTab.url || !/^https?:/.test(currentTab.url)) {
+    const canIsolatePage = !!currentTab.url && /^https?:/i.test(currentTab.url);
+    if (!canIsolatePage) {
       const msg = document.createElement('div');
       msg.style.cssText = 'padding:24px 16px;text-align:center;font-size:12px;font-weight:500;color:var(--text-muted);';
       msg.textContent = localizer.getMessage('cannotIsolatePage') || 'Cannot isolate this page.';
       popupRoot!.appendChild(msg);
-      return;
     }
 
     const inputEl       = document.getElementById('newSessionName') as HTMLInputElement;
@@ -73,14 +75,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     const activeSessionResponse = await chrome.runtime.sendMessage({
       action: 'getSession',
       payload: { tabId: currentTab.id }
-    }) as { sessionId?: string } | null;
+    }) as { sessionId?: string; source?: string; ruleId?: string } | null;
     const currentSessionId = activeSessionResponse?.sessionId || 'default';
+    const currentRules = await getRules();
+    const activeRule = activeSessionResponse?.ruleId
+      ? currentRules.find((rule) => rule.id === activeSessionResponse.ruleId)
+      : undefined;
 
     let saved = await getSavedSessions();
     let currentSessionObj = saved.find(s => s.id === currentSessionId);
     let currentHue = currentSessionObj ? getSessionHue(currentSessionObj, saved.indexOf(currentSessionObj)) : null;
 
-    updateHero(currentSessionId, currentSessionObj, currentHue, localizer);
+    updateHero(currentSessionId, currentSessionObj, currentHue, localizer, {
+      source: activeSessionResponse?.source,
+      ruleId: activeSessionResponse?.ruleId,
+      ruleName: activeRule?.name,
+    });
+    const restoreAutoButton = document.getElementById('btnRestoreAuto') as HTMLButtonElement | null;
+    if (restoreAutoButton && canIsolatePage && activeSessionResponse?.source === 'manual' && currentTab.id !== undefined) {
+      restoreAutoButton.hidden = false;
+      restoreAutoButton.addEventListener('click', async () => {
+        await chrome.runtime.sendMessage({ action: 'restoreAutoMatch', payload: { tabId: currentTab.id } });
+        chrome.tabs.reload(currentTab.id!);
+        window.close();
+      });
+    }
 
     // Hero + cached list sync when a profile color changes
     savedList.addEventListener('sessionColorChanged', (e: Event) => {
@@ -94,7 +113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (cached) cached.hue = hue;
     });
 
-    btnDefault.disabled = currentSessionId === 'default';
+    btnDefault.disabled = !canIsolatePage || currentSessionId === 'default';
 
     function buildResetButton(): HTMLButtonElement {
       const btn = document.createElement('button');
@@ -146,17 +165,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     inputEl.addEventListener('blur',  () => createRow.classList.remove('focused'));
 
     btnNewSession.addEventListener('click', async () => {
-      const newId = 'session_' + crypto.randomUUID();
       const name  = inputEl.value.trim()
         || localizer.getMessage('generatedSessionName', [String(saved.length + 1)])
         || `Session ${saved.length + 1}`;
       const hue   = HUE_PALETTE[saved.length % HUE_PALETTE.length];
-      const newSession: PopupSession = { id: newId, name, hue };
-      const sessions = await getSavedSessions();
-      sessions.push(newSession);
-      await setSavedSessions(sessions);
-      await chrome.runtime.sendMessage({ action: 'createSessionTab', payload: { url: currentTab.url, sessionId: newId } });
-      window.close();
+      const result = await chrome.runtime.sendMessage({ action: 'createSession', payload: { name, hue } }) as {
+        success?: boolean
+        session?: PopupSession
+      } | null;
+      if (!result?.success || !result.session) return;
+
+      if (canIsolatePage && currentTab.url) {
+        await chrome.runtime.sendMessage({ action: 'createSessionTab', payload: { url: currentTab.url, sessionId: result.session.id } });
+        window.close();
+        return;
+      }
+
+      // Profiles are global and can be created from Chrome's internal pages too;
+      // only the current-tab binding requires an HTTP(S) page.
+      saved = await getSavedSessions();
+      inputEl.value = '';
+      renderList();
+      await ruleView.refresh();
     });
 
     inputEl.addEventListener('keydown', (e: KeyboardEvent) => {
@@ -168,10 +198,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     const searchInput = document.getElementById('searchInput') as HTMLInputElement;
 
     function renderList(): void {
-      renderSessionList(savedList, saved, currentSessionId, currentTab.id!, currentTab.url!, localizer, searchQuery);
+      renderSessionList(savedList, saved, currentSessionId, currentTab.id!, currentTab.url || '', localizer, searchQuery, canIsolatePage);
     }
 
     renderList();
+
+    const profilesView = document.getElementById('profilesView')!;
+    const rulesView = document.getElementById('rulesView')!;
+    const profilesViewTab = document.getElementById('profilesViewTab')!;
+    const rulesViewTab = document.getElementById('rulesViewTab')!;
+    const ruleView = createRuleView({
+      root: rulesView,
+      profiles: getSavedSessions,
+      currentUrl: () => currentTab.url || '',
+      localizer,
+    });
+    void ruleView.refresh();
+
+    function selectView(view: 'profiles' | 'rules'): void {
+      const profilesActive = view === 'profiles';
+      profilesView.hidden = !profilesActive;
+      rulesView.hidden = profilesActive;
+      profilesViewTab.classList.toggle('active', profilesActive);
+      rulesViewTab.classList.toggle('active', !profilesActive);
+      profilesViewTab.setAttribute('aria-selected', String(profilesActive));
+      rulesViewTab.setAttribute('aria-selected', String(!profilesActive));
+      if (!profilesActive) void ruleView.refresh();
+    }
+
+    profilesViewTab.addEventListener('click', () => selectView('profiles'));
+    rulesViewTab.addEventListener('click', () => selectView('rules'));
 
     searchInput.addEventListener('input', (e) => {
       searchQuery = (e.target as HTMLInputElement).value;

@@ -1,14 +1,35 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest'
+import { webcrypto } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const NONCE = 'n1'
 const SESSION = 'session_iso'
 const PREFIX = `__ext_${SESSION}_`
+let bootstrapChallenge = ''
+
+window.addEventListener('message', (event) => {
+  if (event.data?.source === 'page-api-proxy' && event.data.action === 'requestBootstrap') {
+    bootstrapChallenge = event.data.challenge
+  }
+})
+
+vi.spyOn(webcrypto.subtle, 'verify').mockResolvedValue(true)
 
 function deliver(data) {
+  const message = data.action === 'initNonce' && data.sessionId !== 'default'
+    ? {
+      ...data,
+      bootstrapProof: 'dGVzdA==',
+      bootstrapProofPayload: JSON.stringify({
+        sessionId: data.sessionId,
+        bootstrapToken: data.nonce,
+        challenge: bootstrapChallenge,
+      }),
+    }
+    : data
   window.dispatchEvent(new MessageEvent('message', {
-    data,
+    data: message,
     source: window,
     origin: window.location.origin,
   }))
@@ -16,8 +37,13 @@ function deliver(data) {
 
 async function loadProxy() {
   vi.resetModules()
+  bootstrapChallenge = ''
+  Object.defineProperty(window, 'crypto', { configurable: true, value: webcrypto })
   await import('../src/page-api-proxy.ts')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  if (!bootstrapChallenge) throw new Error('proxy did not publish a bootstrap challenge')
   deliver({ source: 'ext-content', action: 'initNonce', sessionId: SESSION, nonce: NONCE })
+  await new Promise((resolve) => setTimeout(resolve, 25))
 }
 
 // Runs FIRST and loads the proxy exactly once (beforeAll). Re-importing the proxy
@@ -80,6 +106,12 @@ describe('storage proxy identity + instanceof (Phase 3 / 1.4)', () => {
     window.localStorage.setItem('tok', 'abc')
     expect(window.localStorage.getItem('tok')).toBe('abc')
   })
+
+  it('does not restore native APIs from a page-forged default init message', () => {
+    const isolatedStorage = window.localStorage
+    deliver({ source: 'ext-content', action: 'initNonce', sessionId: 'default', nonce: '' })
+    expect(window.localStorage).toBe(isolatedStorage)
+  })
 })
 
 describe('indexedDB.databases filtering (Phase 3 / 1.5)', () => {
@@ -112,7 +144,10 @@ describe('caches.match scoping (Phase 3 / 1.5)', () => {
   let caughtRequest
   beforeEach(async () => {
     caughtRequest = null
-    const sessionCache = { match: vi.fn(async (req) => { caughtRequest = req; return 'HIT' }) }
+    const sessionCache = {
+      match: vi.fn(async (req) => { caughtRequest = req; return 'HIT' }),
+      matchAll: vi.fn(async (req) => { caughtRequest = req; return ['MATCH_ALL_HIT'] }),
+    }
     const otherCache = { match: vi.fn(async () => 'WRONG') }
     Object.defineProperty(window, 'caches', {
       configurable: true,
@@ -134,6 +169,12 @@ describe('caches.match scoping (Phase 3 / 1.5)', () => {
     const hit = await window.caches.match('/x')
     expect(hit).toBe('HIT')
     expect(caughtRequest).toBe('/x')
+  })
+
+  it('resolves matchAll only against this session prefixed caches', async () => {
+    const matches = await window.caches.matchAll('/y')
+    expect(matches).toEqual(['MATCH_ALL_HIT'])
+    expect(caughtRequest).toBe('/y')
   })
 })
 

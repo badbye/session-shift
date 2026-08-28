@@ -3,7 +3,7 @@ import { buildDnrRulesForCookieStore } from '../background/dnr-cookie-rule-build
 import { cookieKey } from '../lib/cookie-parser.js'
 
 function hostCookie(name, host, path) {
-  return { name, value: name.toLowerCase(), domain: host, path, expires: null }
+  return { name, value: name.toLowerCase(), domain: host, path, expires: null, sameSite: 'none' }
 }
 
 function build(overrides = {}) {
@@ -98,6 +98,84 @@ describe('buildDnrRulesForCookieStore — third-party Cookie strip', () => {
       r.action.requestHeaders?.[0]?.value === 'ROOT=r'
     )
     expect(domainRule).toBeDefined()
+  })
+
+  it('adds a top-level navigation rule for Lax cookies without an initiator', () => {
+    const rules = build({
+      store: {
+        [cookieKey('SID', 'shop.example.com', '/')]: {
+          name: 'SID', value: 'session', domain: 'shop.example.com', path: '/', expires: null,
+          sameSite: 'lax',
+        },
+      },
+      ruleIds: [1, 2, 3, 4, 5],
+    })
+    const navigationRule = rules.find((rule) =>
+      rule.action.requestHeaders?.[0]?.value === 'SID=session' &&
+      rule.condition.resourceTypes?.length === 1 &&
+      rule.condition.resourceTypes[0] === 'main_frame',
+    )
+    expect(navigationRule?.condition.initiatorDomains).toBeUndefined()
+  })
+
+  it('keeps SameSite=None cookies eligible when a scope also has protected cookies', () => {
+    const rules = build({
+      store: {
+        [cookieKey('NONE', 'shop.example.com', '/')]: {
+          name: 'NONE', value: 'none', domain: 'shop.example.com', path: '/', expires: null,
+          sameSite: 'none',
+        },
+        [cookieKey('LAX', 'shop.example.com', '/')]: {
+          name: 'LAX', value: 'lax', domain: 'shop.example.com', path: '/', expires: null,
+          sameSite: 'lax',
+        },
+      },
+      resourceTypes: ['image', 'websocket'],
+    })
+    const sameSiteRule = rules.find((rule) => {
+      const value = rule.action.requestHeaders?.[0]?.value ?? ''
+      return value.includes('NONE=none') && value.includes('LAX=lax')
+    })
+    const crossSiteNoneRule = rules.find((rule) => rule.action.requestHeaders?.[0]?.value === 'NONE=none')
+    expect(sameSiteRule?.condition.initiatorDomains).toEqual(['example.com'])
+    expect(sameSiteRule?.condition.excludedInitiatorDomains).toBeUndefined()
+    expect(crossSiteNoneRule?.condition.initiatorDomains).toBeUndefined()
+    expect(crossSiteNoneRule?.condition.excludedInitiatorDomains).toEqual(['example.com'])
+  })
+
+  it('generates ws/wss cookie rules for profile-wide WebSocket requests', () => {
+    const rules = build({
+      boundHost: null,
+      scheme: 'http',
+      store: {
+        [cookieKey('SID', 'shop.example.com', '/')]: {
+          name: 'SID', value: 'session', domain: 'shop.example.com', path: '/', expires: null,
+          sameSite: 'none', secure: true,
+        },
+      },
+    })
+    const wssRule = rules.find((rule) =>
+      rule.action.requestHeaders?.[0]?.value === 'SID=session' &&
+      rule.condition.regexFilter?.startsWith('^wss://'))
+    const httpsRule = rules.find((rule) =>
+      rule.action.requestHeaders?.[0]?.value === 'SID=session' &&
+      rule.condition.regexFilter?.startsWith('^https://'))
+    expect(wssRule).toBeDefined()
+    expect(httpsRule).toBeDefined()
+  })
+
+  it('sends Secure cookies on the localhost HTTP exception', () => {
+    const rules = build({
+      boundHost: 'localhost',
+      scheme: 'http',
+      store: {
+        [cookieKey('SID', 'localhost', '/')]: {
+          name: 'SID', value: 'local', domain: 'localhost', path: '/', expires: null,
+          sameSite: 'none', secure: true,
+        },
+      },
+    })
+    expect(rules.some((rule) => rule.action.requestHeaders?.[0]?.value === 'SID=local')).toBe(true)
   })
 })
 

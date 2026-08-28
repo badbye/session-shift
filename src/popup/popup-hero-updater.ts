@@ -7,7 +7,8 @@ export function updateHero(
   currentSessionId: string,
   sessionObj: PopupSession | undefined,
   hue: number | null,
-  localizer: Localizer
+  localizer: Localizer,
+  binding?: { source?: string; ruleId?: string; ruleName?: string }
 ): void {
   const heroSection = document.getElementById('heroSection')!;
   const heroMark    = document.getElementById('heroMark')!;
@@ -31,5 +32,22 @@ export function updateHero(
     live.appendChild(dot);
     live.appendChild(document.createTextNode(` ${localizer.getMessage('heroLiveLabel') || 'live'}`));
     heroMeta.appendChild(live);
+    if (binding?.source === 'rule') {
+      const rule = document.createElement('span');
+      rule.className = 'v2-hero-binding';
+      const label = localizer.getMessage('heroRuleSource') || 'Rule';
+      rule.textContent = ` · ${label}: ${binding.ruleName || binding.ruleId || 'unknown'}`;
+      heroMeta.appendChild(rule);
+    } else if (binding?.source === 'manual') {
+      const source = document.createElement('span');
+      source.className = 'v2-hero-binding';
+      source.textContent = ` · ${localizer.getMessage('heroManualSource') || 'manual'}`;
+      heroMeta.appendChild(source);
+    } else if (binding?.source === 'inherit') {
+      const source = document.createElement('span');
+      source.className = 'v2-hero-binding';
+      source.textContent = ` · ${localizer.getMessage('heroInheritedSource') || 'inherited'}`;
+      heroMeta.appendChild(source);
+    }
   }
 }

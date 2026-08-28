@@ -1,13 +1,28 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+import { webcrypto } from 'node:crypto'
 
 const NONCE = 'n1'
 const SESSION = 'session_proxy'
+let bootstrapChallenge = ''
+
+vi.spyOn(webcrypto.subtle, 'verify').mockResolvedValue(true)
 
 function deliver(data) {
+  const message = data.action === 'initNonce' && data.sessionId !== 'default'
+    ? {
+      ...data,
+      bootstrapProof: 'dGVzdA==',
+      bootstrapProofPayload: JSON.stringify({
+        sessionId: data.sessionId,
+        bootstrapToken: data.nonce,
+        challenge: bootstrapChallenge,
+      }),
+    }
+    : data
   // jsdom's window.postMessage sets source=null, which the proxy rejects.
   // Dispatch a synthetic event with source=window to mimic a same-window post.
   window.dispatchEvent(new MessageEvent('message', {
-    data,
+    data: message,
     source: window,
     origin: window.location.origin,
   }))
@@ -18,16 +33,25 @@ function lastUpdateCookiePayload(postSpy) {
   return call?.[0]?.payload
 }
 
+function installWebCrypto() {
+  Object.defineProperty(window, 'crypto', { configurable: true, value: webcrypto })
+}
+
 describe('page-api-proxy document.cookie writes', () => {
   let postSpy
 
   beforeEach(async () => {
     vi.resetModules()
+    installWebCrypto()
     postSpy = vi.spyOn(window, 'postMessage').mockImplementation(() => {})
     await import('../src/page-api-proxy.ts')
+    bootstrapChallenge = [...postSpy.mock.calls].reverse().find(([message]) => message?.action === 'requestBootstrap')?.[0]?.challenge
+    expect(bootstrapChallenge).toMatch(/^[0-9a-f]{64}$/)
     deliver({ source: 'ext-content', action: 'initNonce', sessionId: SESSION, nonce: NONCE })
+    await new Promise((resolve) => setTimeout(resolve, 25))
     // Bootstrap the page's cookie view with a cookie from another scope.
     deliver({ source: 'ext-content', action: 'bootstrapCookies', nonce: NONCE, cookieStr: 'ROOT=root' })
+    await new Promise((resolve) => setTimeout(resolve, 25))
   })
 
   afterEach(() => {
@@ -48,11 +72,53 @@ describe('page-api-proxy document.cookie writes', () => {
     expect(payload.setCookieStr).toBe('foo=bar; Path=/a; Max-Age=3600')
   })
 
+  it('hides a page-side cookie after its Max-Age expires', () => {
+    const now = Date.now()
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now)
+    document.cookie = 'short=live; Max-Age=60'
+    expect(document.cookie).toContain('short=live')
+
+    nowSpy.mockReturnValue(now + 60_001)
+    expect(document.cookie).not.toContain('short=live')
+    nowSpy.mockRestore()
+  })
+
   it('sends deletedNames on a max-age=0 deletion (no setCookieStr)', () => {
     document.cookie = 'foo=bar; max-age=0'
     const payload = lastUpdateCookiePayload(postSpy)
     expect(payload.setCookieStr).toBeUndefined()
     expect(payload.deletedNames).toEqual(['foo'])
+    expect(payload.deletedNamePaths.foo).toBe('/')
+  })
+
+  it('rejects SameSite=None without Secure before changing the local view', () => {
+    document.cookie = 'insecure=sid; SameSite=None'
+    expect(document.cookie).not.toContain('insecure=sid')
+    expect(lastUpdateCookiePayload(postSpy)).toBeUndefined()
+  })
+
+  it('rebinds the existing page proxies when an authenticated profile changes', async () => {
+    bootstrapChallenge = ''
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { source: 'ext-content', action: 'rotateBootstrap' },
+      source: window,
+      origin: window.location.origin,
+    }))
+    bootstrapChallenge = [...postSpy.mock.calls].reverse().find(([message]) => message?.action === 'requestBootstrap')?.[0]?.challenge
+    deliver({
+      source: 'ext-content',
+      action: 'initNonce',
+      sessionId: 'session_proxy_next',
+      nonce: 'n2',
+      cookieStr: 'NEXT=next',
+      cookieEntries: [{ name: 'NEXT', value: 'next', path: '/', domain: 'localhost' }],
+    })
+    await new Promise((resolve) => setTimeout(resolve, 25))
+
+    expect(document.cookie).toContain('NEXT=next')
+    expect(document.cookie).not.toContain('ROOT=root')
+    window.localStorage.setItem('profile', 'next')
+    expect(window.localStorage.getItem('profile')).toBe('next')
   })
 })
 
@@ -65,14 +131,19 @@ describe('page-api-proxy window.cookieStore', () => {
 
   beforeEach(async () => {
     vi.resetModules()
+    installWebCrypto()
     // cookieStore is not defined in jsdom — install a stub so the proxy guard fires.
     if (!('cookieStore' in window)) {
       Object.defineProperty(window, 'cookieStore', { configurable: true, value: {}, writable: true })
     }
     postSpy = vi.spyOn(window, 'postMessage').mockImplementation(() => {})
     await import('../src/page-api-proxy.ts')
+    bootstrapChallenge = [...postSpy.mock.calls].reverse().find(([message]) => message?.action === 'requestBootstrap')?.[0]?.challenge
+    expect(bootstrapChallenge).toMatch(/^[0-9a-f]{64}$/)
     deliver({ source: 'ext-content', action: 'initNonce', sessionId: SESSION, nonce: NONCE })
+    await new Promise((resolve) => setTimeout(resolve, 25))
     deliver({ source: 'ext-content', action: 'bootstrapCookies', nonce: NONCE, cookieStr: 'ROOT=root' })
+    await new Promise((resolve) => setTimeout(resolve, 25))
   })
 
   afterEach(() => {
@@ -103,6 +174,36 @@ describe('page-api-proxy window.cookieStore', () => {
     expect(str.toLowerCase()).not.toContain('domain')
   })
 
+  it('preserves Cookie Store security attributes in the forwarded string', async () => {
+    await window.cookieStore.set({ name: 'sid', value: 'abc', secure: true, sameSite: 'strict' })
+    const str = lastPayload().setCookieStr
+    expect(str).toContain('; Secure')
+    expect(str).toContain('; SameSite=strict')
+  })
+
+  it('rejects SameSite=None without Secure', async () => {
+    await expect(window.cookieStore.set({ name: 'sid', value: 'abc', sameSite: 'none' }))
+      .rejects.toThrow('SameSite=None cookies require Secure')
+  })
+
+  it('hides cookies outside the current path', async () => {
+    await window.cookieStore.set({ name: 'admin', value: 'secret', path: '/admin' })
+    expect(await window.cookieStore.get('admin')).toBeNull()
+    expect(await window.cookieStore.getAll()).not.toContainEqual(expect.objectContaining({ name: 'admin' }))
+  })
+
+  it('does not return an expired cookie from the page-side view', async () => {
+    const now = Date.now()
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now)
+    await window.cookieStore.set({ name: 'short', value: 'live', expires: now + 60_000 })
+    expect(await window.cookieStore.get('short')).toEqual({ name: 'short', value: 'live' })
+
+    nowSpy.mockReturnValue(now + 60_001)
+    expect(await window.cookieStore.get('short')).toBeNull()
+    expect(await window.cookieStore.getAll()).not.toContainEqual(expect.objectContaining({ name: 'short' }))
+    nowSpy.mockRestore()
+  })
+
   it('delete posts a structured deleteTargets entry', async () => {
     await window.cookieStore.delete({ name: 'sid', path: '/admin' })
     expect(lastPayload().deleteTargets).toEqual([{ name: 'sid', domain: undefined, path: '/admin' }])
@@ -119,6 +220,7 @@ describe('page-api-proxy auth bridge fetch wrapper', () => {
 
   beforeEach(async () => {
     vi.resetModules()
+    installWebCrypto()
     postSpy = vi.spyOn(window, 'postMessage').mockImplementation(() => {})
     fetchSpy = vi.fn(async (request) => new Response(JSON.stringify({
       header: request.headers.get('X-SessionShift-Bridge'),
@@ -129,8 +231,12 @@ describe('page-api-proxy auth bridge fetch wrapper', () => {
       value: fetchSpy,
     })
     await import('../src/page-api-proxy.ts')
+    bootstrapChallenge = [...postSpy.mock.calls].reverse().find(([message]) => message?.action === 'requestBootstrap')?.[0]?.challenge
+    expect(bootstrapChallenge).toMatch(/^[0-9a-f]{64}$/)
     deliver({ source: 'ext-content', action: 'initNonce', sessionId: SESSION, nonce: NONCE })
+    await new Promise((resolve) => setTimeout(resolve, 25))
     deliver({ source: 'ext-content', action: 'bootstrapCookies', nonce: NONCE, cookieStr: '' })
+    await new Promise((resolve) => setTimeout(resolve, 25))
   })
 
   afterEach(() => {

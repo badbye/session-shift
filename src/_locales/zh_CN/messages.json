@@ -262,5 +262,173 @@
   },
   "languageOptionSystem": {
     "message": "系统（跟随浏览器）"
+  },
+  "profilesViewTab": {
+    "message": "配置文件"
+  },
+  "rulesViewTab": {
+    "message": "规则"
+  },
+  "rulesViewSubtitle": {
+    "message": "根据网址自动绑定配置文件"
+  },
+  "newRuleButton": {
+    "message": "新建规则"
+  },
+  "ruleFormNew": {
+    "message": "新建规则"
+  },
+  "ruleFormEdit": {
+    "message": "编辑规则"
+  },
+  "ruleFieldName": {
+    "message": "名称"
+  },
+  "ruleFieldProfile": {
+    "message": "配置文件"
+  },
+  "ruleFieldScheme": {
+    "message": "协议"
+  },
+  "ruleFieldPort": {
+    "message": "端口"
+  },
+  "ruleFieldHostname": {
+    "message": "主机名"
+  },
+  "ruleFieldUrlRegex": {
+    "message": "URL 正则"
+  },
+  "ruleOptional": {
+    "message": "可选"
+  },
+  "ruleEnabled": {
+    "message": "启用"
+  },
+  "rulePriority": {
+    "message": "优先级"
+  },
+  "ruleUseCurrentUrl": {
+    "message": "使用当前网址"
+  },
+  "ruleCancel": {
+    "message": "取消"
+  },
+  "ruleSave": {
+    "message": "保存规则"
+  },
+  "ruleDeletedProfileReplacement": {
+    "message": "已删除配置文件（请选择替代项）"
+  },
+  "ruleCreateProfileFirst": {
+    "message": "请先创建配置文件"
+  },
+  "rulePreviewMatch": {
+    "message": "匹配当前网址 → $profile$（$rule$）",
+    "placeholders": {
+      "profile": {
+        "content": "$1",
+        "example": "Development"
+      },
+      "rule": {
+        "content": "$2",
+        "example": "Dev rule"
+      }
+    }
+  },
+  "rulePreviewConflict": {
+    "message": "当前网址匹配，但另一条规则优先级更高。"
+  },
+  "rulePreviewNoMatch": {
+    "message": "与当前网址不匹配。"
+  },
+  "rulePreviewDeleted": {
+    "message": "已删除配置文件——保存前请选择替代项。"
+  },
+  "ruleDeletedProfile": {
+    "message": "已删除配置文件"
+  },
+  "rulePriorityMeta": {
+    "message": "$id$ · 优先级 $priority$",
+    "placeholders": {
+      "id": {
+        "content": "$1",
+        "example": "rule_123"
+      },
+      "priority": {
+        "content": "$2",
+        "example": "100"
+      }
+    }
+  },
+  "ruleEnable": {
+    "message": "启用规则"
+  },
+  "ruleDisable": {
+    "message": "禁用规则"
+  },
+  "ruleOn": {
+    "message": "开"
+  },
+  "ruleOff": {
+    "message": "关"
+  },
+  "ruleEdit": {
+    "message": "编辑"
+  },
+  "ruleDelete": {
+    "message": "删除"
+  },
+  "ruleDeleteConfirm": {
+    "message": "确定删除规则“$name$”吗？",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Dev rule"
+      }
+    }
+  },
+  "ruleEmptyNoProfiles": {
+    "message": "请先创建配置文件，然后添加用于网址路由的规则。"
+  },
+  "ruleEmptyNoRules": {
+    "message": "还没有规则。创建一条规则，将网址路由到配置文件。"
+  },
+  "ruleSaveError": {
+    "message": "无法保存规则"
+  },
+  "ruleInvalidPage": {
+    "message": "当前页面不是 HTTP(S) 网址。"
+  },
+  "ruleCopy": {
+    "message": "复制",
+    "description": "Copy rule button text."
+  },
+  "ruleCopyName": {
+    "message": "$name$（副本）",
+    "description": "Name for a copied rule.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Dev rule"
+      }
+    }
+  },
+  "ruleTestUrl": {
+    "message": "测试网址",
+    "description": "Input label for testing a rule against an arbitrary URL."
+  },
+  "heroRuleSource": {
+    "message": "规则"
+  },
+  "heroManualSource": {
+    "message": "手动"
+  },
+  "heroInheritedSource": {
+    "message": "继承"
+  }
+  ,"restoreAutoMatch": {
+    "message": "恢复自动匹配",
+    "description": "Button to clear a manual profile override and resume URL rule matching."
   }
 }

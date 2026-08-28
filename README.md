@@ -30,6 +30,8 @@ A Chrome extension that gives each tab its own isolated session, letting you sta
 - **Profile-based isolation** — Each profile is a global cookie container (like a Chrome profile); assign a tab to a profile and its cookies apply on every site that tab visits
 - **Named profiles** — Create, rename, recolor, and switch between profiles with custom names
 - **One global profile list** — A single searchable list; a profile created on one site is selectable on every site
+- **URL routing rules** — Create Rules in a separate popup tab to bind matching HTTP(S) URLs to a Profile automatically; scheme and hostname are required, while port and full-URL regex are optional
+- **Manual override per tab** — A manually selected Profile wins over URL Rules until you choose **Restore auto match**, so two tabs on the same URL can still use different Profiles
 - **Auto-inherit for linked tabs** — Tabs opened via links (`target="_blank"`, Ctrl+Click, middle-click) automatically inherit the opener tab's profile (toggle in Options, default on)
 - **Open in new tab** — Right-click a profile in the popup to open the current page in that profile's session
 - **Context menu integration** — Right-click any link → "Open in Session" to open it in a specific profile
@@ -55,7 +57,7 @@ SessionShift isolates cookies at three layers:
 2. **Storage Layer** — Maintain per-profile cookie stores in `chrome.storage.local`
 3. **DOM Layer** — Override `document.cookie`, `localStorage`, `sessionStorage` via content scripts
 
-Each tab is assigned a profile. When a tab makes a network request, the DNR rule injects only that profile's cookies. When the page reads `document.cookie`, the proxy returns only that profile's cookies.
+Each tab is assigned a profile, either manually or by a URL Rule. Rules only decide the `tab → profileId` binding; the existing isolation layers then inject and expose only that Profile's cookies and storage.
 
 ```
 Tab 1 (Profile A) ──DNR Rule──→ Cookie: profile_a_cookie_1=value
@@ -100,6 +102,7 @@ Read the docs for deeper understanding:
 - **[Codebase Summary](docs/codebase-summary.md)** — File map, module responsibilities, data flow, storage schema
 - **[Code Standards](docs/code-standards.md)** — Conventions, naming, error handling, security patterns, i18n rules, testing
 - **[System Architecture](docs/system-architecture.md)** — Service worker lifecycle, DNR cookie isolation, ISOLATED/MAIN world bridge, message protocol, localization design
+- **[Profile & URL Rules](PROFILE_RULES_REQUIREMENTS.md)** — Authoritative Rule data model, matching order, Profile binding behavior, corner cases, and excluded scope
 - **[Project Roadmap](docs/project-roadmap.md)** — Current status, upcoming phases, backlog items
 - **[Translation Contributing](docs/translation-contributing.md)** — Locale quality tiers, critical-key review gate, Weblate contribution/promotion workflow
 
@@ -139,6 +142,14 @@ Read the docs for deeper understanding:
 2. Click any profile in the list (or cycle with `Ctrl+Shift+Right/Left`)
 3. Page reloads with that profile's cookies
 
+### Route URLs to a Profile Automatically
+1. Open the popup and select the **Rules** tab
+2. Create a Rule and select its target Profile
+3. Enter the required scheme and hostname; optionally enter a port, URL regex, or custom priority
+4. Save the Rule — matching top-level navigations now bind that tab to the selected Profile
+
+A manual Profile selection is a per-tab override. Use **Restore auto match** in the popup to let Rules control that tab again.
+
 ### Open Current Page in Another Profile
 1. Right-click a profile card in the popup
 2. Choose **Open in new tab** — the page opens in a new tab bound to that profile
@@ -154,6 +165,7 @@ Read the docs for deeper understanding:
 2. Hover over a profile, click **Delete**
 3. All cookies for that profile are permanently removed
 4. Tabs in that profile are reset to default
+5. Rules that referenced it are retained and shown as **Deleted profile**, but can never match until reassigned to an existing Profile
 
 ### Settings (Options Page)
 - **Theme** — Dark / Light / System
@@ -186,7 +198,7 @@ See [System Architecture § Threat Model](docs/system-architecture.md#threat-mod
 npm run test:unit     # run all Vitest unit tests (299 tests)
 ```
 
-Coverage areas: session lifecycle, DNR rule building, Set-Cookie parsing, cookie write locking, page-proxy isolation and storage, profile migration, linked-tab inheritance, public-suffix matching, storage GC, manifest permissions, and localization (catalog integrity, runtime adapter, critical-key fallback).
+Coverage areas: Rule storage/resolution/binding, session lifecycle, DNR rule building, Set-Cookie parsing, cookie write locking, page-proxy isolation and storage, profile migration, linked-tab inheritance, public-suffix matching, storage GC, manifest permissions, and localization (catalog integrity, runtime adapter, critical-key fallback).
 
 ### Locale Validation
 
@@ -249,6 +261,9 @@ See [Project Roadmap](docs/project-roadmap.md) for the detailed plan and feature
 
 - **Private browsing:** Sessions don't persist (chrome.storage.session limitation)
 - **No auto-login:** You must manually log in once per profile
+- **Top-level navigation only:** URL Rules do not react to iframe/subresource URLs or SPA `pushState` changes in the current version
+- **One automatic result per URL:** Identical URLs resolve to the same Rule winner; use a manual per-tab override when identical URLs need different Profiles
+- **Deleted Profile references stay visible:** An orphaned Rule is preserved for repair but is excluded from matching and cannot reactivate its deleted Profile ID
 - **Linked-tab first request:** For link-opened tabs, the very first network request may not be hard-guaranteed cookie-clean due to browser timing; isolation is deterministic from the second request onward
 - **Tab grouping is opt-in and lossy:** Native Chrome tab groups (Options) quantize each profile's color to one of Chrome's 9 preset group colors, so two similarly-colored profiles can end up with the same group color. Assigning a tab to a profile always moves it into that profile's group — if the tab was the last one in a group you made by hand, Chrome removes that group; this is inherent to `chrome.tabs.group()`, not something SessionShift can opt out of
 

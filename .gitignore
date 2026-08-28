@@ -19,3 +19,7 @@ release-manifest.json
 test-results/
 playwright-report/
 screenshot/
+
+# Archived source trees kept outside the new root repository.
+/third_party/session-shift/
+/third_party/storage-inspector-original/

@@ -262,5 +262,173 @@
   },
   "languageOptionSystem": {
     "message": "Σύστημα (όπως το πρόγραμμα περιήγησης)"
+  },
+  "profilesViewTab": {
+    "message": "Profiles"
+  },
+  "rulesViewTab": {
+    "message": "Rules"
+  },
+  "rulesViewSubtitle": {
+    "message": "Automatically bind URLs to Profiles"
+  },
+  "newRuleButton": {
+    "message": "New rule"
+  },
+  "ruleFormNew": {
+    "message": "New rule"
+  },
+  "ruleFormEdit": {
+    "message": "Edit rule"
+  },
+  "ruleFieldName": {
+    "message": "Name"
+  },
+  "ruleFieldProfile": {
+    "message": "Profile"
+  },
+  "ruleFieldScheme": {
+    "message": "Scheme"
+  },
+  "ruleFieldPort": {
+    "message": "Port"
+  },
+  "ruleFieldHostname": {
+    "message": "Hostname"
+  },
+  "ruleFieldUrlRegex": {
+    "message": "URL regex"
+  },
+  "ruleOptional": {
+    "message": "optional"
+  },
+  "ruleEnabled": {
+    "message": "Enabled"
+  },
+  "rulePriority": {
+    "message": "Priority"
+  },
+  "ruleUseCurrentUrl": {
+    "message": "Use current URL"
+  },
+  "ruleCancel": {
+    "message": "Cancel"
+  },
+  "ruleSave": {
+    "message": "Save rule"
+  },
+  "ruleDeletedProfileReplacement": {
+    "message": "Deleted profile (choose a replacement)"
+  },
+  "ruleCreateProfileFirst": {
+    "message": "Create a Profile first"
+  },
+  "rulePreviewMatch": {
+    "message": "Matches current URL → $profile$ ($rule$)",
+    "placeholders": {
+      "profile": {
+        "content": "$1",
+        "example": "Development"
+      },
+      "rule": {
+        "content": "$2",
+        "example": "Dev rule"
+      }
+    }
+  },
+  "rulePreviewConflict": {
+    "message": "Current URL matches, but another rule has higher priority."
+  },
+  "rulePreviewNoMatch": {
+    "message": "Does not match the current URL."
+  },
+  "rulePreviewDeleted": {
+    "message": "Deleted profile — choose a replacement before saving."
+  },
+  "ruleDeletedProfile": {
+    "message": "Deleted profile"
+  },
+  "rulePriorityMeta": {
+    "message": "$id$ · priority $priority$",
+    "placeholders": {
+      "id": {
+        "content": "$1",
+        "example": "rule_123"
+      },
+      "priority": {
+        "content": "$2",
+        "example": "100"
+      }
+    }
+  },
+  "ruleEnable": {
+    "message": "Enable rule"
+  },
+  "ruleDisable": {
+    "message": "Disable rule"
+  },
+  "ruleOn": {
+    "message": "On"
+  },
+  "ruleOff": {
+    "message": "Off"
+  },
+  "ruleEdit": {
+    "message": "Edit"
+  },
+  "ruleDelete": {
+    "message": "Delete"
+  },
+  "ruleDeleteConfirm": {
+    "message": "Delete rule “$name$”?",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Dev rule"
+      }
+    }
+  },
+  "ruleEmptyNoProfiles": {
+    "message": "Create a Profile first, then add a Rule for URL routing."
+  },
+  "ruleEmptyNoRules": {
+    "message": "No rules yet. Create one to route a URL to a Profile."
+  },
+  "ruleSaveError": {
+    "message": "Could not save rule"
+  },
+  "ruleInvalidPage": {
+    "message": "The current page is not an HTTP(S) URL."
+  },
+  "ruleCopy": {
+    "message": "Copy",
+    "description": "Copy rule button text."
+  },
+  "ruleCopyName": {
+    "message": "$name$ (copy)",
+    "description": "Name for a copied rule.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Dev rule"
+      }
+    }
+  },
+  "ruleTestUrl": {
+    "message": "Test URL",
+    "description": "Input label for testing a rule against an arbitrary URL."
+  },
+  "heroRuleSource": {
+    "message": "rule"
+  },
+  "heroManualSource": {
+    "message": "manual"
+  },
+  "heroInheritedSource": {
+    "message": "inherited"
+  }
+  ,"restoreAutoMatch": {
+    "message": "Restore automatic matching",
+    "description": "Button to clear a manual profile override and resume URL rule matching."
   }
 }

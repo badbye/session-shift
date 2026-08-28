@@ -206,7 +206,15 @@ test.describe('Cookie isolation', () => {
     )
 
     await tab.goto(`${mockServerUrl}/set?user=bob`)
+    // MV3 webRequest is observational; the response-side DNR rule keeps the
+    // navigation Set-Cookie out of Chrome's shared jar while the extension
+    // captures it. The profile rule is therefore exercised on the next request.
+    await tab.reload()
     expect(JSON.parse(await tab.textContent('body') ?? '{}').cookies.user).toBe('bob')
+
+    const defaultCheck = await context.newPage()
+    await defaultCheck.goto(`${mockServerUrl}/cookies?t=redirect-default`)
+    expect(JSON.parse(await defaultCheck.textContent('body') ?? '{}').cookies.user).toBeUndefined()
   })
 
   test('isolated same-site auth fetch can set cookie before immediate navigation', async ({

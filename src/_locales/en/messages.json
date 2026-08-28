@@ -177,6 +177,9 @@
     "message": "live",
     "description": "Status word shown next to the active session name in the popup hero."
   },
+  "heroRuleSource": { "message": "rule", "description": "Binding source label for a URL rule." },
+  "heroManualSource": { "message": "manual", "description": "Binding source label for a manual profile selection." },
+  "heroInheritedSource": { "message": "inherited", "description": "Binding source label for linked-tab inheritance." },
   "openInNewTab": {
     "message": "Open in new tab",
     "description": "Menu item to open the current page in the selected profile via a new tab."
@@ -315,5 +318,46 @@
   "languageOptionSystem": {
     "message": "System (match browser)",
     "description": "Language picker option that delegates to Chrome's own UI locale instead of a pinned locale."
-  }
+  },
+  "profilesViewTab": { "message": "Profiles", "description": "Popup view tab for profile management." },
+  "rulesViewTab": { "message": "Rules", "description": "Popup view tab for URL rule management." },
+  "rulesViewSubtitle": { "message": "Automatically bind URLs to Profiles", "description": "Popup Rules view subtitle." },
+  "newRuleButton": { "message": "New rule", "description": "Button to create a URL rule." },
+  "ruleFormNew": { "message": "New rule", "description": "New URL rule form title." },
+  "ruleFormEdit": { "message": "Edit rule", "description": "Edit URL rule form title." },
+  "ruleFieldName": { "message": "Name", "description": "URL rule name label." },
+  "ruleFieldProfile": { "message": "Profile", "description": "URL rule profile selector label." },
+  "ruleFieldScheme": { "message": "Scheme", "description": "URL rule scheme selector label." },
+  "ruleFieldPort": { "message": "Port", "description": "Optional URL rule port label." },
+  "ruleFieldHostname": { "message": "Hostname", "description": "URL rule hostname label." },
+  "ruleFieldUrlRegex": { "message": "URL regex", "description": "Optional URL regex label." },
+  "ruleOptional": { "message": "optional", "description": "Optional field marker." },
+  "ruleEnabled": { "message": "Enabled", "description": "URL rule enabled checkbox label." },
+  "rulePriority": { "message": "Priority", "description": "URL rule priority label." },
+  "ruleUseCurrentUrl": { "message": "Use current URL", "description": "Button to fill a rule from the current URL." },
+  "ruleCancel": { "message": "Cancel", "description": "Cancel URL rule editing." },
+  "ruleSave": { "message": "Save rule", "description": "Save URL rule button." },
+  "ruleDeletedProfileReplacement": { "message": "Deleted profile (choose a replacement)", "description": "Orphaned rule profile option." },
+  "ruleCreateProfileFirst": { "message": "Create a Profile first", "description": "Prompt shown when no profiles exist." },
+  "rulePreviewMatch": { "message": "Matches current URL → $profile$ ($rule$)", "description": "Rule preview when the draft wins." , "placeholders": { "profile": { "content": "$1", "example": "Development" }, "rule": { "content": "$2", "example": "Dev rule" } } },
+  "rulePreviewConflict": { "message": "Current URL matches, but another rule has higher priority.", "description": "Rule preview conflict message." },
+  "rulePreviewNoMatch": { "message": "Does not match the current URL.", "description": "Rule preview no-match message." },
+  "rulePreviewDeleted": { "message": "Deleted profile — choose a replacement before saving.", "description": "Rule preview for an orphaned profile." },
+  "ruleDeletedProfile": { "message": "Deleted profile", "description": "Marker for a rule whose profile was deleted." },
+  "rulePriorityMeta": { "message": "$id$ · priority $priority$", "description": "Rule card ID and priority metadata.", "placeholders": { "id": { "content": "$1", "example": "rule_123" }, "priority": { "content": "$2", "example": "100" } } },
+  "ruleEnable": { "message": "Enable rule", "description": "Tooltip for enabling a rule." },
+  "ruleDisable": { "message": "Disable rule", "description": "Tooltip for disabling a rule." },
+  "ruleOn": { "message": "On", "description": "Enabled rule toggle text." },
+  "ruleOff": { "message": "Off", "description": "Disabled rule toggle text." },
+  "ruleEdit": { "message": "Edit", "description": "Edit rule button text." },
+  "ruleDelete": { "message": "Delete", "description": "Delete rule button text." },
+  "ruleDeleteConfirm": { "message": "Delete rule “$name$”?", "description": "Delete rule confirmation.", "placeholders": { "name": { "content": "$1", "example": "Dev rule" } } },
+  "ruleEmptyNoProfiles": { "message": "Create a Profile first, then add a Rule for URL routing.", "description": "Empty Rules view message when there are no profiles." },
+  "ruleEmptyNoRules": { "message": "No rules yet. Create one to route a URL to a Profile.", "description": "Empty Rules view message." },
+  "ruleSaveError": { "message": "Could not save rule", "description": "Fallback error when saving a rule fails." },
+  "ruleInvalidPage": { "message": "The current page is not an HTTP(S) URL.", "description": "Error shown when the current page cannot be used for a rule." }
+  ,"ruleCopy": { "message": "Copy", "description": "Copy rule button text." }
+  ,"ruleCopyName": { "message": "$name$ (copy)", "description": "Name for a copied rule.", "placeholders": { "name": { "content": "$1", "example": "Dev rule" } } }
+  ,"ruleTestUrl": { "message": "Test URL", "description": "Input label for testing a rule against an arbitrary URL." }
+  ,"restoreAutoMatch": { "message": "Restore automatic matching", "description": "Button to clear a manual profile override and resume URL rule matching." }
 }

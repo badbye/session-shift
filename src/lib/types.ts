@@ -7,6 +7,29 @@ export interface Session {
   hue?: number
 }
 
+export interface RuleMatch {
+  scheme: 'http' | 'https'
+  hostname: string
+  port?: number
+  urlRegex?: string
+}
+
+export interface ProfileRule {
+  id: string
+  name: string
+  profileId: string
+  enabled: boolean
+  priority: number
+  match: RuleMatch
+}
+
+export type TabBindingSource = 'manual' | 'rule' | 'inherit' | 'default'
+
+export interface TabBindingMeta {
+  source: TabBindingSource
+  ruleId?: string
+}
+
 export type Theme = 'dark' | 'light' | 'system'
 
 export interface ExtSettings {
@@ -37,7 +60,35 @@ export interface ParsedCookie {
 export type BackgroundMessage =
   | { action: 'setSession'; payload: { tabId: number; sessionId: string } }
   | { action: 'getSession'; payload?: { tabId?: number } }
-  | { action: 'getSessionForBootstrap'; payload?: { tabId?: number } }
+  | { action: 'restoreAutoMatch'; payload: { tabId: number } }
+  | { action: 'restoreDefaultSessionApis' }
+  | {
+      action: 'getSessionForBootstrap'
+      payload?: { tabId?: number; challenge?: string }
+    }
+  | { action: 'getRules' }
+  | {
+      action: 'replaceProfileRules'
+      payload: { version: 1; profiles: Session[]; rules: ProfileRule[] }
+    }
+  | {
+      action: 'createRule'
+      payload: {
+        name: string
+        profileId: string
+        match: RuleMatch
+        enabled?: boolean
+        priority?: number
+      }
+    }
+  | {
+      action: 'updateRule'
+      payload: {
+        rule: ProfileRule
+      }
+    }
+  | { action: 'deleteRule'; payload: { ruleId: string } }
+  | { action: 'setRuleEnabled'; payload: { ruleId: string; enabled: boolean } }
   | {
       action: 'updateCookie'
       payload: {
@@ -47,13 +98,19 @@ export type BackgroundMessage =
         setCookieStr?: string
         /** document.cookie deletions (max-age<=0), matched by name at the document scope. */
         deletedNames?: string[]
+        /** Optional exact default/declared path for each document.cookie deletion. */
+        deletedNamePaths?: Record<string, string>
         /** cookieStore.delete structured targets — matched by name/domain/path, not document URL. */
         deleteTargets?: { name: string; domain?: string; path?: string }[]
+        /** Content-script-owned binding captured when the page emitted the write. */
+        expectedProfileId?: string
         url?: string
       }
     }
   | { action: 'refreshBadge'; payload: { tabId: number } }
   | { action: 'deleteSession'; payload: { sessionId: string } }
+  | { action: 'createSession'; payload: { name: string; hue?: number } }
+  | { action: 'renameSession'; payload: { sessionId: string; name: string } }
   | { action: 'createSessionTab'; payload: { url: string; sessionId: string } }
   | { action: 'duplicateSession'; payload?: { sessionId: string } }
   | { action: 'colorSession'; payload: { sessionId: string; hue: number } }

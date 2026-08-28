@@ -1,7 +1,6 @@
 // popup-rename-handler.ts — Inline rename input for session cards.
 
 import type { PopupSession } from './popup-types.js';
-import { renameSession } from './popup-session-storage.js';
 
 export function startRename(
   card: HTMLElement,
@@ -35,7 +34,15 @@ export function startRename(
 
     const newName = input.value.trim() || session.name || session.id;
     session.name = newName;
-    await renameSession(session.id, newName);
+    const result = await chrome.runtime.sendMessage({
+      action: 'renameSession',
+      payload: { sessionId: session.id, name: newName },
+    });
+    if (!result?.success) {
+      committed = false;
+      input.disabled = false;
+      return;
+    }
 
     const newSpan = document.createElement('div');
     newSpan.className = 'v2-card-name';
@@ -55,9 +62,8 @@ export function startRename(
       document.getElementById('heroName')!.textContent = newName;
     }
     chrome.runtime.sendMessage({ action: 'refreshBadge', payload: { tabId } });
-    // Retitle any already-open native tab group for this profile — renameSession()
-    // above only wrote chrome.storage.local, which chrome.tabGroups never reads on its own.
-    chrome.runtime.sendMessage({ action: 'renameProfileGroups', payload: { sessionId: session.id } });
+    // The background rename mutation also retitles any already-open native tab
+    // group for this profile after the shared profile list write commits.
   }
 
   input.addEventListener('keydown', (e: KeyboardEvent) => {

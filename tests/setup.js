@@ -89,6 +89,7 @@ function createChromeMock() {
       create: vi.fn(),
       sendMessage: vi.fn().mockResolvedValue({}),
       update: vi.fn(),
+      reload: vi.fn().mockResolvedValue(undefined),
       query: vi.fn(),
       group: vi.fn(),
       ungroup: vi.fn(),
@@ -111,6 +112,7 @@ function createChromeMock() {
       onRemoved: { addListener: vi.fn() },
     },
     webNavigation: {
+      onBeforeNavigate: { addListener: vi.fn() },
       onCreatedNavigationTarget: { addListener: vi.fn() },
     },
     action: {
@@ -123,6 +125,7 @@ function createChromeMock() {
     webRequest: {
       onBeforeSendHeaders: { addListener: vi.fn() },
       onHeadersReceived: { addListener: vi.fn() },
+      onBeforeRedirect: { addListener: vi.fn() },
       onCompleted: { addListener: vi.fn() },
       onErrorOccurred: { addListener: vi.fn() },
     },

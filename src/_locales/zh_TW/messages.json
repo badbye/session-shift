@@ -262,5 +262,173 @@
   },
   "languageOptionSystem": {
     "message": "系統預設（跟隨瀏覽器）"
+  },
+  "profilesViewTab": {
+    "message": "設定檔"
+  },
+  "rulesViewTab": {
+    "message": "規則"
+  },
+  "rulesViewSubtitle": {
+    "message": "依網址自動繫結設定檔"
+  },
+  "newRuleButton": {
+    "message": "新增規則"
+  },
+  "ruleFormNew": {
+    "message": "新增規則"
+  },
+  "ruleFormEdit": {
+    "message": "編輯規則"
+  },
+  "ruleFieldName": {
+    "message": "名稱"
+  },
+  "ruleFieldProfile": {
+    "message": "設定檔"
+  },
+  "ruleFieldScheme": {
+    "message": "通訊協定"
+  },
+  "ruleFieldPort": {
+    "message": "連接埠"
+  },
+  "ruleFieldHostname": {
+    "message": "主機名稱"
+  },
+  "ruleFieldUrlRegex": {
+    "message": "URL 正規表示式"
+  },
+  "ruleOptional": {
+    "message": "選填"
+  },
+  "ruleEnabled": {
+    "message": "已啟用"
+  },
+  "rulePriority": {
+    "message": "優先順序"
+  },
+  "ruleUseCurrentUrl": {
+    "message": "使用目前網址"
+  },
+  "ruleCancel": {
+    "message": "取消"
+  },
+  "ruleSave": {
+    "message": "儲存規則"
+  },
+  "ruleDeletedProfileReplacement": {
+    "message": "已刪除的設定檔（請選擇替代項目）"
+  },
+  "ruleCreateProfileFirst": {
+    "message": "請先建立設定檔"
+  },
+  "rulePreviewMatch": {
+    "message": "符合目前網址 → $profile$（$rule$）",
+    "placeholders": {
+      "profile": {
+        "content": "$1",
+        "example": "Development"
+      },
+      "rule": {
+        "content": "$2",
+        "example": "Dev rule"
+      }
+    }
+  },
+  "rulePreviewConflict": {
+    "message": "目前網址符合，但另一條規則的優先順序較高。"
+  },
+  "rulePreviewNoMatch": {
+    "message": "不符合目前網址。"
+  },
+  "rulePreviewDeleted": {
+    "message": "設定檔已刪除——儲存前請選擇替代項目。"
+  },
+  "ruleDeletedProfile": {
+    "message": "已刪除的設定檔"
+  },
+  "rulePriorityMeta": {
+    "message": "$id$ · 優先順序 $priority$",
+    "placeholders": {
+      "id": {
+        "content": "$1",
+        "example": "rule_123"
+      },
+      "priority": {
+        "content": "$2",
+        "example": "100"
+      }
+    }
+  },
+  "ruleEnable": {
+    "message": "啟用規則"
+  },
+  "ruleDisable": {
+    "message": "停用規則"
+  },
+  "ruleOn": {
+    "message": "開啟"
+  },
+  "ruleOff": {
+    "message": "關閉"
+  },
+  "ruleEdit": {
+    "message": "編輯"
+  },
+  "ruleDelete": {
+    "message": "刪除"
+  },
+  "ruleDeleteConfirm": {
+    "message": "確定要刪除規則「$name$」嗎？",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Dev rule"
+      }
+    }
+  },
+  "ruleEmptyNoProfiles": {
+    "message": "請先建立設定檔，再新增用於網址路由的規則。"
+  },
+  "ruleEmptyNoRules": {
+    "message": "目前沒有規則。建立規則即可將網址路由至設定檔。"
+  },
+  "ruleSaveError": {
+    "message": "無法儲存規則"
+  },
+  "ruleInvalidPage": {
+    "message": "目前頁面不是 HTTP(S) 網址。"
+  },
+  "ruleCopy": {
+    "message": "複製",
+    "description": "Copy rule button text."
+  },
+  "ruleCopyName": {
+    "message": "$name$（副本）",
+    "description": "Name for a copied rule.",
+    "placeholders": {
+      "name": {
+        "content": "$1",
+        "example": "Dev rule"
+      }
+    }
+  },
+  "ruleTestUrl": {
+    "message": "測試網址",
+    "description": "Input label for testing a rule against an arbitrary URL."
+  },
+  "heroRuleSource": {
+    "message": "規則"
+  },
+  "heroManualSource": {
+    "message": "手動"
+  },
+  "heroInheritedSource": {
+    "message": "繼承"
+  }
+  ,"restoreAutoMatch": {
+    "message": "恢復自動比對",
+    "description": "Button to clear a manual profile override and resume URL rule matching."
   }
 }

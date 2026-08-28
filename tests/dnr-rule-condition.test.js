@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { updateDNRRulesForTab } from '../background/dnr-manager.js'
+import {
+  clearBridgeNavigationStrip,
+  dnrRuleIdsForTab,
+  prepareNavigationCookieStrip,
+  releaseDnrRuleIdsForTab,
+  updateDNRRulesForTab,
+} from '../background/dnr-manager.js'
 import { cookieKey } from '../lib/cookie-parser.js'
 
 async function setupProfile({ sessionId, tabId, tabUrl, store = {} }) {
@@ -11,7 +17,36 @@ async function setupProfile({ sessionId, tabId, tabUrl, store = {} }) {
 }
 
 describe('updateDNRRulesForTab', () => {
-  it('base-strips Cookie and Set-Cookie for non-navigation resources', async () => {
+  it('does not publish a cancelled delayed preflight strip', async () => {
+    chrome.declarativeNetRequest.updateSessionRules.mockClear()
+
+    prepareNavigationCookieStrip(19, 'https://example.com/account')
+    clearBridgeNavigationStrip(19)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(chrome.declarativeNetRequest.updateSessionRules).not.toHaveBeenCalled()
+  })
+
+  it('allocates disjoint rule ranges for colliding tab IDs', () => {
+    const first = dnrRuleIdsForTab(100)
+    const second = dnrRuleIdsForTab(1_000_100)
+    expect(first.some((id) => second.includes(id))).toBe(false)
+    releaseDnrRuleIdsForTab(100)
+    releaseDnrRuleIdsForTab(1_000_100)
+  })
+
+  it('supports more than 22 isolated tabs without overlapping IDs', () => {
+    const tabIds = Array.from({ length: 23 }, (_, index) => 10_000_000 + index)
+    try {
+      const ranges = tabIds.map((tabId) => dnrRuleIdsForTab(tabId))
+      const allIds = ranges.flat()
+      expect(new Set(allIds).size).toBe(allIds.length)
+    } finally {
+      for (const tabId of tabIds) releaseDnrRuleIdsForTab(tabId)
+    }
+  })
+
+  it('base-strips subresource Cookie and Set-Cookie while navigation uses exact preflight rules', async () => {
     await setupProfile({
       sessionId: 'session_google',
       tabId: 10,
@@ -22,24 +57,24 @@ describe('updateDNRRulesForTab', () => {
 
     expect(chrome.declarativeNetRequest.updateSessionRules).toHaveBeenCalledTimes(1)
     const [{ addRules }] = chrome.declarativeNetRequest.updateSessionRules.mock.calls[0]
-    // addRules[0] = request-side Cookie strip, tab-scoped for subresources.
+    // addRules[0] = request-side Cookie strip, tab-scoped for every resource.
     expect(addRules[0].action.requestHeaders[0]).toEqual({ header: 'Cookie', operation: 'remove' })
     expect(addRules[0].condition.requestDomains).toBeUndefined()
     expect(addRules[0].condition.urlFilter).toBeUndefined()
     expect(addRules[0].condition.excludedRequestDomains).toBeUndefined()
-    expect(addRules[0].condition.resourceTypes).not.toContain('main_frame')
-    expect(addRules[0].condition.resourceTypes).not.toContain('sub_frame')
+    expect(addRules[0].condition.resourceTypes).toContain('main_frame')
+    expect(addRules[0].condition.resourceTypes).toContain('sub_frame')
     const responseRules = addRules.filter((rule) => rule.action.responseHeaders?.[0]?.header === 'set-cookie')
     expect(responseRules.length).toBe(1)
     const [strictResponseRule] = responseRules
     expect(strictResponseRule.condition.excludedRequestDomains).toBeUndefined()
     expect(strictResponseRule.condition.requestDomains).toBeUndefined()
     expect(strictResponseRule.condition.urlFilter).toBeUndefined()
-    expect(strictResponseRule.condition.resourceTypes).not.toContain('main_frame')
-    expect(strictResponseRule.condition.resourceTypes).not.toContain('sub_frame')
+    expect(strictResponseRule.condition.resourceTypes).toContain('main_frame')
+    expect(strictResponseRule.condition.resourceTypes).toContain('sub_frame')
   })
 
-  it('keeps base stripping subresource-only for an http profile too', async () => {
+  it('keeps the http profile base strip navigation-free too', async () => {
     await setupProfile({
       sessionId: 'session_http',
       tabId: 11,
@@ -50,13 +85,13 @@ describe('updateDNRRulesForTab', () => {
 
     const [{ addRules }] = chrome.declarativeNetRequest.updateSessionRules.mock.calls.at(-1)
     // The http scheme is still derived from the tab URL for cookie SET rules
-    // (Secure exclusion), but base strips stay navigation-safe.
+    // (Secure exclusion); main-frame navigation is protected by exact preflight.
     const responseRules = addRules.filter((rule) => rule.action.responseHeaders?.[0]?.header === 'set-cookie')
     expect(addRules[0].condition.requestDomains).toBeUndefined()
     expect(addRules[0].condition.excludedRequestDomains).toBeUndefined()
     expect(responseRules.every((rule) => !rule.condition.excludedRequestDomains)).toBe(true)
-    expect(addRules[0].condition.resourceTypes).not.toContain('main_frame')
-    expect(responseRules.every((rule) => !rule.condition.resourceTypes.includes('main_frame'))).toBe(true)
+    expect(addRules[0].condition.resourceTypes).toContain('main_frame')
+    expect(responseRules.every((rule) => rule.condition.resourceTypes.includes('main_frame'))).toBe(true)
   })
 
   it('strips same-site subresource cookies too while response-side stripping stays strict', async () => {

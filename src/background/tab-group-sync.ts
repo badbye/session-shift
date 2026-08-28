@@ -98,6 +98,14 @@ export function forgetAllAppearances(): void {
 export const syncTabToGroup = (tabId: number, windowId: number, sessionId: string): Promise<void> =>
   enqueue(() => syncTabToGroupImpl(tabId, windowId, sessionId));
 
+/** Remove a tab from a managed profile group when it returns to default. */
+export const ungroupTab = (tabId: number): Promise<void> => enqueue(async () => {
+  if (typeof chrome.tabGroups === 'undefined' || !(await isEnabled())) return;
+  await withTabGroups(async () => {
+    await chrome.tabs.ungroup([tabId]);
+  });
+});
+
 async function syncTabToGroupImpl(tabId: number, windowId: number, sessionId: string): Promise<void> {
   if (typeof chrome.tabGroups === 'undefined' || isInternalSession(sessionId)) return;
   await groupRegistryRestored;

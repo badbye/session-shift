@@ -3,17 +3,22 @@
 import { getProfiles, isInternalSession } from '../lib/session-store.js';
 import { DEFAULT_HUE, badgeBackgroundRgba, badgeTextRgba } from '../lib/profile-color.js';
 import { getIconSetForHue } from './profile-icon-renderer.js';
+import type { TabBindingMeta } from '../lib/types.js';
 
 // ---------------------------------------------------------------------------
 // Tab→session in-memory map (persisted to chrome.storage.session)
 // ---------------------------------------------------------------------------
 export let tabSessions: Record<string, string> = {};
+export let tabBindingMeta: Record<string, TabBindingMeta> = {};
 
 export async function restoreTabSessions(): Promise<void> {
   try {
-    const result = await chrome.storage.session.get(['tabSessions']);
+    const result = await chrome.storage.session.get(['tabSessions', 'tabBindingMeta']);
     if (result.tabSessions) {
       tabSessions = result.tabSessions as Record<string, string>;
+    }
+    if (result.tabBindingMeta) {
+      tabBindingMeta = result.tabBindingMeta as Record<string, TabBindingMeta>;
     }
   } catch (e) {
     console.warn('[bg] restoreTabSessions failed:', e);
@@ -22,10 +27,30 @@ export async function restoreTabSessions(): Promise<void> {
 
 export async function persistTabSessions(): Promise<void> {
   try {
-    await chrome.storage.session.set({ tabSessions });
+    await chrome.storage.session.set({ tabSessions, tabBindingMeta });
   } catch (e) {
     console.warn('[bg] persistTabSessions failed:', e);
   }
+}
+
+export function getTabBindingMeta(tabId: number): TabBindingMeta {
+  const stored = tabBindingMeta[tabId];
+  if (stored) return stored;
+  // Existing installations only persisted tabSessions before binding metadata
+  // existed. Treat those non-default assignments as manual so the first rule
+  // navigation after upgrade does not unexpectedly replace a user's profile.
+  return tabSessions[tabId] && !isInternalSession(tabSessions[tabId])
+    ? { source: 'manual' }
+    : { source: 'default' };
+}
+
+export function setTabBindingMeta(tabId: number, meta: TabBindingMeta): void {
+  tabBindingMeta[tabId] = meta;
+}
+
+export function clearTabBinding(tabId: number): void {
+  delete tabSessions[tabId];
+  delete tabBindingMeta[tabId];
 }
 
 // ---------------------------------------------------------------------------

@@ -1,9 +1,13 @@
 // index.ts — Service worker entry point: startup + Chrome API listener registration.
 
-import { restoreTabSessions, tabSessions, persistTabSessions, updateBadge } from './session-manager.js';
-import { dnrRuleIdsForTab, registerWebRequestListener, clearBridgeNavigationStrip } from './dnr-manager.js';
+import { restoreTabSessions, tabSessions, persistTabSessions, updateBadge, clearTabBinding } from './session-manager.js';
+import {
+  dnrRuleIdsForTab, registerWebRequestListener, clearBridgeNavigationStrip,
+  updateDNRRulesForTab, releaseDnrRuleIdsForTab, waitForDnrRuleAllocations,
+} from './dnr-manager.js';
 import { setupContextMenu, registerStorageListener } from './context-menu-manager.js';
 import { registerLinkedTabInheritance } from './linked-tab-inheritance.js';
+import { invalidateNavigation, registerRuleNavigationListener } from './rule-manager.js';
 import { handleMessage } from './message-handler.js';
 import type { BackgroundMessage } from '../lib/types.js';
 import { getProfiles, isInternalSession } from '../lib/session-store.js';
@@ -27,6 +31,7 @@ const restored: Promise<void> = restoreTabSessions();
 setupContextMenu();
 registerStorageListener();
 registerWebRequestListener();
+registerRuleNavigationListener(restored);
 registerLinkedTabInheritance(restored);
 
 // Phase 4 tab-group sync (optional `tabGroups` permission — see
@@ -90,12 +95,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 // Tab lifecycle
 // ---------------------------------------------------------------------------
 chrome.tabs.onRemoved.addListener(async (tabId) => {
+  // Cancel any rule-resolution/bind operation that is still awaiting storage.
+  // Tab ids can be reused, so the generation must be invalidated before the
+  // cleanup awaits the restoration/allocation barriers.
+  invalidateNavigation(tabId);
   await restored;
-  if (tabSessions[tabId] !== undefined) {
-    delete tabSessions[tabId];
-    await persistTabSessions();
-  }
+  await waitForDnrRuleAllocations();
+  clearTabBinding(tabId);
+  await persistTabSessions();
   chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: dnrRuleIdsForTab(tabId) }).catch(() => {});
+  releaseDnrRuleIdsForTab(tabId);
   clearBridgeNavigationStrip(tabId);
 });
 
@@ -108,7 +117,13 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
   await restored;
   if (changeInfo.status === 'loading') {
     const sessionId = tabSessions[tabId] || 'default';
-    if (!isInternalSession(sessionId)) updateBadge(tabId, sessionId);
+    if (!isInternalSession(sessionId)) {
+      // DNR cookie injection is scheme-specific. Rebuild on every top-level
+      // loading transition so http<->https redirects cannot retain rules for
+      // the previous scheme and make the active profile appear logged out.
+      void updateDNRRulesForTab(tabId, sessionId).catch(() => {});
+      updateBadge(tabId, sessionId);
+    }
   }
 });
 

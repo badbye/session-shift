@@ -48,35 +48,78 @@
             <div class="v2-hero-meta" id="heroMeta">No session scoped</div>
           </div>
         </div>
+        <button id="btnRestoreAuto" class="v2-restore-auto" type="button" hidden data-i18n="restoreAutoMatch">Restore automatic matching</button>
       </div>
     </div>
 
-    <!-- SEARCH -->
-    <div class="v2-search-wrap" id="searchWrap">
-      <svg class="v2-search-icon" width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      <input type="search" id="searchInput" class="v2-search" placeholder="Search profiles…" autocomplete="off" spellcheck="false"
-             data-i18n-placeholder="searchPlaceholder" data-i18n-aria-label="searchAriaLabel" aria-label="Search profiles">
+    <!-- PROFILE / RULE VIEWS -->
+    <div class="v2-view-tabs" role="tablist" aria-label="Configuration views">
+      <button id="profilesViewTab" class="v2-view-tab active" role="tab" aria-selected="true" aria-controls="profilesView" data-i18n="profilesViewTab">Profiles</button>
+      <button id="rulesViewTab" class="v2-view-tab" role="tab" aria-selected="false" aria-controls="rulesView" data-i18n="rulesViewTab">Rules</button>
     </div>
 
-    <!-- CREATE PROFILE -->
-    <div class="v2-create" id="createRow">
-      <div class="v2-create-icon">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+    <div id="profilesView" role="tabpanel" aria-labelledby="profilesViewTab">
+      <!-- SEARCH -->
+      <div class="v2-search-wrap" id="searchWrap">
+        <svg class="v2-search-icon" width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="search" id="searchInput" class="v2-search" placeholder="Search profiles…" autocomplete="off" spellcheck="false"
+               data-i18n-placeholder="searchPlaceholder" data-i18n-aria-label="searchAriaLabel" aria-label="Search profiles">
       </div>
-      <input type="text" id="newSessionName" class="v2-create-input" placeholder="Name a new profile…" autocomplete="off" spellcheck="false" dir="auto"
-             data-i18n-placeholder="createPlaceholder">
-      <button id="btnNewSession" class="v2-create-btn">
-        <span data-i18n="createButton">Create</span>
-        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
+
+      <!-- CREATE PROFILE -->
+      <div class="v2-create" id="createRow">
+        <div class="v2-create-icon">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 3.5v9M3.5 8h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <input type="text" id="newSessionName" class="v2-create-input" placeholder="Name a new profile…" autocomplete="off" spellcheck="false" dir="auto"
+               data-i18n-placeholder="createPlaceholder">
+        <button id="btnNewSession" class="v2-create-btn">
+          <span data-i18n="createButton">Create</span>
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M6 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <!-- SESSION LIST -->
+      <div class="v2-list-wrap" id="savedSessionsList">
+        <div class="v2-list-head">
+          <span data-i18n="listHeadProfiles">Profiles</span>
+          <span class="v2-list-count" id="sessionCount" aria-live="polite" aria-atomic="true">0</span>
+        </div>
+      </div>
     </div>
 
-    <!-- SESSION LIST -->
-    <div class="v2-list-wrap" id="savedSessionsList">
-      <div class="v2-list-head">
-        <span data-i18n="listHeadProfiles">Profiles</span>
-        <span class="v2-list-count" id="sessionCount" aria-live="polite" aria-atomic="true">0</span>
+    <div id="rulesView" class="v2-rules-view" role="tabpanel" aria-labelledby="rulesViewTab" hidden>
+      <div class="v2-rules-head">
+        <div>
+          <div class="v2-list-head-title" data-i18n="rulesViewTab">Rules</div>
+          <div class="v2-rules-subtitle" data-i18n="rulesViewSubtitle">Automatically bind URLs to Profiles</div>
+        </div>
+        <button id="btnNewRule" class="v2-rule-new-btn" type="button" data-i18n="newRuleButton">New rule</button>
       </div>
+      <div id="ruleList" class="v2-rule-list" aria-live="polite"></div>
+      <form id="ruleForm" class="v2-rule-form" hidden>
+        <div class="v2-rule-form-title" id="ruleFormTitle" data-i18n="ruleFormNew">New rule</div>
+        <label class="v2-rule-field"><span data-i18n="ruleFieldName">Name</span><input id="ruleName" required maxlength="200" autocomplete="off"></label>
+        <label class="v2-rule-field"><span data-i18n="ruleFieldProfile">Profile</span><select id="ruleProfile" required></select></label>
+        <div class="v2-rule-grid">
+          <label class="v2-rule-field"><span data-i18n="ruleFieldScheme">Scheme</span><select id="ruleScheme" required><option value="https">https</option><option value="http">http</option></select></label>
+          <label class="v2-rule-field"><span data-i18n="ruleFieldPort">Port</span><input id="rulePort" type="number" min="1" max="65535" inputmode="numeric" placeholder="Any"></label>
+        </div>
+        <label class="v2-rule-field"><span data-i18n="ruleFieldHostname">Hostname</span><input id="ruleHostname" required maxlength="253" autocomplete="off" placeholder="dev.example.com"></label>
+        <label class="v2-rule-field"><span data-i18n="ruleFieldUrlRegex">URL regex</span> <span class="v2-rule-optional" data-i18n="ruleOptional">optional</span><input id="ruleRegex" maxlength="500" autocomplete="off" placeholder="^https://dev\\.example\\.com/"></label>
+        <div class="v2-rule-grid">
+          <label class="v2-rule-field v2-rule-check"><input id="ruleEnabled" type="checkbox" checked> <span data-i18n="ruleEnabled">Enabled</span></label>
+          <label class="v2-rule-field"><span data-i18n="rulePriority">Priority</span><input id="rulePriority" type="number" min="0" max="1000000" value="100" inputmode="numeric"></label>
+        </div>
+        <button id="btnUseCurrentUrl" class="v2-rule-secondary-btn" type="button" data-i18n="ruleUseCurrentUrl">Use current URL</button>
+        <label class="v2-rule-field"><span data-i18n="ruleTestUrl">Test URL</span><input id="ruleTestUrl" type="url" autocomplete="off" placeholder="https://dev.example.com/"></label>
+        <div id="rulePreview" class="v2-rule-preview" aria-live="polite"></div>
+        <div id="ruleFormError" class="v2-rule-error" role="alert" hidden></div>
+        <div class="v2-rule-form-actions">
+          <button id="btnCancelRule" class="v2-rule-secondary-btn" type="button" data-i18n="ruleCancel">Cancel</button>
+          <button id="btnSaveRule" class="v2-rule-save-btn" type="submit" data-i18n="ruleSave">Save rule</button>
+        </div>
+      </form>
     </div>
 
     <!-- FOOTER -->

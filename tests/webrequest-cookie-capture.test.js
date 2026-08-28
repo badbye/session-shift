@@ -8,10 +8,9 @@ import { tabSessions } from '../background/session-manager.js'
 import { getCookieStore } from '../lib/session-store.js'
 import { AUTH_BRIDGE_HEADER } from '../lib/auth-transition-bridge.js'
 
-// Regression: post-login redirect race. Chrome can follow a 302 before an async
-// webRequest handler finishes rebuilding DNR, so navigation Set-Cookie is allowed
-// through to Chrome's jar. We still capture it and rebuild DNR for later isolated
-// requests.
+// Regression: post-login redirect race. DNR strips navigation Set-Cookie from
+// Chrome's shared jar, while webRequest captures it and rebuilds DNR for later
+// isolated requests.
 
 function details({ tabId, url, type, setCookie }) {
   return {
@@ -74,6 +73,42 @@ describe('handleHeadersReceived — cookie capture + DNR rebuild timing', () => 
     expect(chrome.declarativeNetRequest.updateSessionRules).toHaveBeenCalled()
   })
 
+  it('stores a late response in the profile that owned the request', async () => {
+    tabSessions[25] = 'session_before_switch'
+    await chrome.storage.local.set({
+      profiles: [
+        { id: 'session_before_switch', name: 'Before', hue: 0 },
+        { id: 'session_after_switch', name: 'After', hue: 0 },
+      ],
+      cookies_session_before_switch: {},
+      cookies_session_after_switch: {},
+    })
+
+    handleBeforeSendHeaders({
+      requestId: 'late-response',
+      tabId: 25,
+      frameId: 0,
+      url: 'https://github.com/login',
+      requestHeaders: [],
+    })
+    tabSessions[25] = 'session_after_switch'
+
+    await handleHeadersReceived({
+      ...details({
+        tabId: 25,
+        url: 'https://github.com/login',
+        type: 'xmlhttprequest',
+        setCookie: 'before=1; Path=/',
+      }),
+      requestId: 'late-response',
+    })
+
+    const before = await getCookieStore('session_before_switch')
+    const after = await getCookieStore('session_after_switch')
+    expect(Object.values(before).some((entry) => entry.name === 'before')).toBe(true)
+    expect(Object.values(after).some((entry) => entry.name === 'before')).toBe(false)
+  })
+
   it('ignores default/unassigned tabs', async () => {
     chrome.declarativeNetRequest.updateSessionRules.mockClear()
     await handleHeadersReceived(details({
@@ -108,7 +143,7 @@ describe('handleHeadersReceived — cookie capture + DNR rebuild timing', () => 
 
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
       23,
-      { action: 'bridgeCookieSyncDone', bridgeId: 'bridge-1' },
+      { action: 'bridgeCookieSyncDone', bridgeId: 'bridge-1', cookieStr: '', cookieEntries: [] },
       { frameId: 0 },
     )
   })

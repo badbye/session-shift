@@ -14,6 +14,10 @@ import {
 import type { Localizer } from '../lib/localization.js'
 import { SUPPORTED_LOCALES } from '../lib/localization-types.js'
 import type { RuntimeLocalePreference } from '../lib/localization-types.js'
+import {
+  exportProfileRules,
+  parseProfileRulesTransfer,
+} from '../lib/profile-rules-transfer.js'
 
 function applyTheme(theme: string): void {
   if (theme === 'system') {
@@ -43,6 +47,12 @@ function populateLanguageSelect(select: HTMLSelectElement, localizer: Localizer,
     select.appendChild(option)
   }
   select.value = current
+}
+
+function showTransferStatus(element: HTMLElement, message: string, kind: 'success' | 'error'): void {
+  element.hidden = !message
+  element.textContent = message
+  element.className = `opt-transfer-status is-${kind}`
 }
 
 /** Never throws — the last-resort fallback if even `createLocalizer('system')` fails. */
@@ -147,6 +157,47 @@ document.addEventListener('DOMContentLoaded', async () => {
     // and reapplies localization in place (no tab/panel/theme/focus reset).
     const languageSelect = document.getElementById('languageSelect') as HTMLSelectElement
     populateLanguageSelect(languageSelect, localizer, localizer.preference)
+
+    const exportButton = document.getElementById('exportProfileRules') as HTMLButtonElement
+    const importInput = document.getElementById('importProfileRules') as HTMLInputElement
+    const transferStatus = document.getElementById('profileRulesTransferStatus') as HTMLElement
+    exportButton.addEventListener('click', async () => {
+      try {
+        const json = await exportProfileRules()
+        const blob = new Blob([json], { type: 'application/json' })
+        const url = URL.createObjectURL(blob)
+        const link = document.createElement('a')
+        link.href = url
+        link.download = `sessionshift-profiles-rules-${new Date().toISOString().slice(0, 10)}.json`
+        document.body.appendChild(link)
+        link.click()
+        link.remove()
+        URL.revokeObjectURL(url)
+        showTransferStatus(transferStatus, 'Profiles and Rules exported.', 'success')
+      } catch {
+        showTransferStatus(transferStatus, 'Could not export Profile and Rule data.', 'error')
+      }
+    })
+    importInput.addEventListener('change', async () => {
+      const file = importInput.files?.[0]
+      importInput.value = ''
+      if (!file) return
+      try {
+        const data = parseProfileRulesTransfer(await file.text())
+        const confirmed = window.confirm(
+          `This will replace all current Profiles and Rules with ${data.profiles.length} Profiles and ${data.rules.length} Rules. Continue?`,
+        )
+        if (!confirmed) return
+        const result = await chrome.runtime.sendMessage({ action: 'replaceProfileRules', payload: data }) as {
+          success?: boolean
+          error?: string
+        } | null
+        if (!result?.success) throw new Error(result?.error || 'Could not import Profile and Rule data.')
+        showTransferStatus(transferStatus, 'Profiles and Rules imported.', 'success')
+      } catch {
+        showTransferStatus(transferStatus, 'Invalid Profile/Rule JSON. Nothing was changed.', 'error')
+      }
+    })
 
     const generationGuard = createGenerationGuard()
     languageSelect.addEventListener('change', async () => {

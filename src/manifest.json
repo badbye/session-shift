@@ -21,7 +21,8 @@
     "webRequest",
     "webNavigation",
     "contextMenus",
-    "alarms"
+    "alarms",
+    "scripting"
   ],
   "options_ui": {
     "page": "options/options.html",

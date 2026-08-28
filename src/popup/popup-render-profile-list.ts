@@ -4,7 +4,7 @@
 
 import type { PopupSession } from './popup-types.js';
 import { getSessionHue } from './popup-types.js';
-import { getSavedSessions, setSavedSessions } from './popup-session-storage.js';
+import { getSavedSessions } from './popup-session-storage.js';
 import { buildColorDot } from './popup-color-picker.js';
 import { startRename } from './popup-rename-handler.js';
 import { startDeleteConfirm, cancelActiveConfirm } from './popup-delete-handler.js';
@@ -18,7 +18,8 @@ export function renderSessionList(
   tabId: number,
   currentUrl: string,
   localizer: Localizer,
-  query = ''
+  query = '',
+  canActivate = true,
 ): void {
   cancelActiveConfirm();
 
@@ -132,7 +133,7 @@ export function renderSessionList(
       dupBtn.disabled = true;
       await chrome.runtime.sendMessage({ action: 'duplicateSession', payload: { sessionId: session.id } });
       const fresh = await getSavedSessions();
-      renderSessionList(container, fresh, currentSessionId, tabId, currentUrl, localizer, query);
+      renderSessionList(container, fresh, currentSessionId, tabId, currentUrl, localizer, query, canActivate);
     });
 
     const renameBtn = document.createElement('button');
@@ -165,9 +166,6 @@ export function renderSessionList(
         e.stopPropagation();
         startDeleteConfirm(actions, [dupBtn, renameBtn, delBtn], async () => {
           await chrome.runtime.sendMessage({ action: 'deleteSession', payload: { sessionId: session.id } });
-          const current = await getSavedSessions();
-          await setSavedSessions(current.filter(s => s.id !== session.id));
-          await new Promise<void>(resolve => chrome.storage.local.remove([`cookies_${session.id}`], resolve));
           card.remove();
           const c = document.getElementById('sessionCount');
           if (c) c.textContent = String(Math.max(0, parseInt(c.textContent || '0') - 1));
@@ -184,7 +182,10 @@ export function renderSessionList(
     attachOpenInTabMenu(card, session, () => currentUrl, localizer);
 
     if (!isActive) {
-      card.addEventListener('click', () => {
+      if (!canActivate) {
+        card.classList.add('is-unavailable')
+        card.title = localizer.getMessage('cannotIsolatePage') || 'Cannot isolate this page.'
+      } else card.addEventListener('click', () => {
         chrome.runtime.sendMessage({ action: 'setSession', payload: { tabId, sessionId: session.id } })
           .then(() => { chrome.tabs.reload(tabId); window.close(); });
       });

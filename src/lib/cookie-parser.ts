@@ -139,7 +139,7 @@ export function parseSetCookie(setCookieStr: string, requestUrl: string): Parsed
         expiresStr = attrValue;
         break;
       case 'max-age':
-        maxAge = parseInt(attrValue, 10);
+        if (/^-?\d+$/.test(attrValue)) maxAge = Number(attrValue);
         break;
       case 'secure':
         cookie.secure = true;
@@ -168,6 +168,12 @@ export function parseSetCookie(setCookieStr: string, requestUrl: string): Parsed
       cookie.expires = expiresDate.getTime();
     }
   }
+
+  // Browsers reject Secure cookies received over plaintext HTTP (localhost is
+  // the intentional development exception). Do not persist a cookie that the
+  // real browser would never accept and later inject into an HTTPS request.
+  if (cookie.secure && url?.protocol === 'http:' && url.hostname !== 'localhost') return null;
+  if (cookie.sameSite?.toLowerCase() === 'none' && !cookie.secure) return null;
 
   return cookie;
 }
@@ -222,6 +228,8 @@ export interface ParsedDocumentCookie {
   path: string;
   /** Epoch ms; null = session cookie; 0 = deletion (Max-Age<=0 / past Expires). */
   expires: number | null;
+  secure: boolean;
+  sameSite?: string;
 }
 
 /**
@@ -246,6 +254,8 @@ export function parseDocumentCookie(cookieStr: string, requestUrl: string): Pars
   let path = defaultCookiePath(url?.pathname);
   let maxAge: number | null = null;
   let expiresStr: string | null = null;
+  let secure = false;
+  let sameSite: string | undefined;
 
   for (let i = 1; i < parts.length; i++) {
     const attr = parts[i].trim();
@@ -261,8 +271,18 @@ export function parseDocumentCookie(cookieStr: string, requestUrl: string): Pars
         expiresStr = attrValue;
         break;
       case 'max-age':
-        maxAge = parseInt(attrValue, 10);
+        if (/^-?\d+$/.test(attrValue)) maxAge = Number(attrValue);
         break;
+      case 'secure':
+        secure = true;
+        break;
+      case 'samesite': {
+        const normalized = attrValue.toLowerCase();
+        if (normalized === 'strict' || normalized === 'lax' || normalized === 'none') {
+          sameSite = normalized;
+        }
+        break;
+      }
       // 'domain' intentionally ignored — host-pinning enforced in background.
     }
   }
@@ -275,7 +295,10 @@ export function parseDocumentCookie(cookieStr: string, requestUrl: string): Pars
     if (!Number.isNaN(d.getTime())) expires = d.getTime();
   }
 
-  return { name, value, path, expires };
+  if (secure && url?.protocol === 'http:' && url.hostname !== 'localhost') return null;
+  if (sameSite?.toLowerCase() === 'none' && !secure) return null;
+
+  return { name, value, path, expires, secure, ...(sameSite === undefined ? {} : { sameSite }) };
 }
 
 export function parseCookieString(cookieStr: string): Map<string, string> {

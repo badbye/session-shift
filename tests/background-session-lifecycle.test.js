@@ -1,9 +1,16 @@
 import { describe, it, expect } from 'vitest'
+import { webcrypto } from 'node:crypto'
 import { handleMessage } from '../background.js'
 import { handleRequestCompleted } from '../background/dnr-manager.js'
 import { tabSessions } from '../background/session-manager.js'
 
 const SENDER = { id: chrome.runtime.id }
+const BOOTSTRAP_PUBLIC_KEY = {
+  kty: 'EC',
+  x: 'WBBJCNZvPlR1B70GaUW-FaFHRHVJs_8WU-7JZTSKKQo',
+  y: '58WLqE1ehEMRRds74MJmoYMheCXxO3yTOkltWFl77sQ',
+  crv: 'P-256',
+}
 
 function findCookieEntryByName(store, name) {
   return Object.values(store).find((entry) => entry?.name === name) ?? store[name]
@@ -34,10 +41,40 @@ describe('getSessionForBootstrap', () => {
     )
     const result = await handleMessage(
       { action: 'getSessionForBootstrap', payload: { tabId: 55 } },
-      SENDER
+      tabSender(55, 'https://example.com/account')
     )
     expect(result.sessionId).toBe('session_boot1')
     expect(result.cookieStr).toContain('tok=abc')
+  })
+
+  it('returns a proof verifiable by the packaged MAIN-world public key', async () => {
+    await chrome.storage.local.set({
+      profiles: [{ id: 'session_boot_crypto', name: 'Crypto Boot' }],
+      'cookies_session_boot_crypto': {},
+    })
+    await handleMessage(
+      { action: 'setSession', payload: { tabId: 56, sessionId: 'session_boot_crypto' } },
+      SENDER,
+    )
+
+    const result = await handleMessage(
+      { action: 'getSessionForBootstrap' },
+      tabSender(56, 'https://example.com/'),
+    )
+    const verifyKey = await webcrypto.subtle.importKey(
+      'jwk',
+      BOOTSTRAP_PUBLIC_KEY,
+      { name: 'ECDSA', namedCurve: 'P-256' },
+      false,
+      ['verify'],
+    )
+
+    expect(await webcrypto.subtle.verify(
+      { name: 'ECDSA', hash: 'SHA-256' },
+      verifyKey,
+      Uint8Array.from(Buffer.from(result.bootstrapProof, 'base64')),
+      new TextEncoder().encode(result.bootstrapProofPayload),
+    )).toBe(true)
   })
 })
 
@@ -103,7 +140,7 @@ describe('createSessionTab — new profile must not leak the default jar cookie'
     expect(chrome.tabs.create).not.toHaveBeenCalled()
   })
 
-  it('strips Cookie on the first navigation, then clears the strip once that navigation completes', async () => {
+  it('strips Cookie on the first navigation, then clears only the one-shot host strip', async () => {
     await chrome.storage.local.set({ profiles: [{ id: 'session_new1', name: 'New', hue: 0 }] })
     chrome.tabs.create.mockResolvedValue({ id: 401 })
     chrome.tabs.get.mockResolvedValue({ id: 401, url: 'https://example.com/dashboard' })
@@ -126,16 +163,19 @@ describe('createSessionTab — new profile must not leak the default jar cookie'
     )
     expect(stripRule).toBeDefined()
 
-    // Once the navigation to that host completes, the strip must be cleared so
-    // later navigations in this tab are not permanently cookie-less.
+    // Once the navigation to that host completes, the one-shot host strip must
+    // be cleared. The general tab-scoped remove rule remains: it protects later
+    // navigations from the shared default jar when this Profile has no cookie
+    // scope for the destination.
     await handleRequestCompleted({ requestId: 'nav-1', tabId: 401, type: 'main_frame' })
     calls = chrome.declarativeNetRequest.updateSessionRules.mock.calls
     ;({ addRules } = calls[calls.length - 1][0])
-    const strippedAfter = addRules.find(r =>
+    const hostStripAfter = addRules.find(r =>
       r.action.requestHeaders?.some(h => h.header === 'Cookie' && h.operation === 'remove') &&
+      r.condition.regexFilter?.includes('example\\.com') &&
       r.condition.resourceTypes?.includes('main_frame')
     )
-    expect(strippedAfter).toBeUndefined()
+    expect(hostStripAfter).toBeUndefined()
 
     delete tabSessions[401]
   })
@@ -185,12 +225,33 @@ describe('updateCookie trust boundary (H3)', () => {
     })
     await handleMessage({ action: 'setSession', payload: { tabId: 200, sessionId: 'session_m1' } }, SENDER)
     await handleMessage(
-      { action: 'updateCookie', payload: { cookieStr: 'newcookie=val' } },
+      { action: 'updateCookie', payload: { cookieStr: 'newcookie=val', expectedProfileId: 'session_m1' } },
       tabSender(200, 'https://merge.com/page')
     )
     const stored = await chrome.storage.local.get(['cookies_session_m1'])
     expect(stored['cookies_session_m1'].existing.value).toBe('old')
     expect(findCookieEntryByName(stored['cookies_session_m1'], 'newcookie')?.value).toBe('val')
+  })
+
+  it('rejects a queued write from the previous Profile after a tab switch', async () => {
+    await chrome.storage.local.set({
+      profiles: [
+        { id: 'session_old', name: 'Old', hue: 0 },
+        { id: 'session_new', name: 'New', hue: 1 },
+      ],
+      cookies_session_old: {},
+      cookies_session_new: {},
+    })
+    await handleMessage({ action: 'setSession', payload: { tabId: 209, sessionId: 'session_old' } }, SENDER)
+    await handleMessage({ action: 'setSession', payload: { tabId: 209, sessionId: 'session_new' } }, SENDER)
+    const result = await handleMessage(
+      { action: 'updateCookie', payload: { cookieStr: 'stale=1', expectedProfileId: 'session_old' } },
+      tabSender(209, 'https://stale.example.com/'),
+    )
+    expect(result).toEqual({ success: false, reason: 'stale profile binding' })
+    const stored = await chrome.storage.local.get(['cookies_session_old', 'cookies_session_new'])
+    expect(findCookieEntryByName(stored.cookies_session_old, 'stale')).toBeUndefined()
+    expect(findCookieEntryByName(stored.cookies_session_new, 'stale')).toBeUndefined()
   })
 
   it('empty cookieStr does not wipe existing cookies', async () => {
@@ -200,7 +261,7 @@ describe('updateCookie trust boundary (H3)', () => {
     })
     await handleMessage({ action: 'setSession', payload: { tabId: 201, sessionId: 'session_w1' } }, SENDER)
     await handleMessage(
-      { action: 'updateCookie', payload: { cookieStr: '' } },
+      { action: 'updateCookie', payload: { cookieStr: '', expectedProfileId: 'session_w1' } },
       tabSender(201, 'https://wipe.com/page')
     )
     const stored = await chrome.storage.local.get(['cookies_session_w1'])
@@ -217,7 +278,7 @@ describe('updateCookie trust boundary (H3)', () => {
     })
     await handleMessage({ action: 'setSession', payload: { tabId: 202, sessionId: 'session_del1' } }, SENDER)
     await handleMessage(
-      { action: 'updateCookie', payload: { cookieStr: '', deletedNames: ['gone'] } },
+      { action: 'updateCookie', payload: { cookieStr: '', deletedNames: ['gone'], expectedProfileId: 'session_del1' } },
       tabSender(202, 'https://del.com/page')
     )
     const stored = await chrome.storage.local.get(['cookies_session_del1'])
@@ -232,11 +293,28 @@ describe('updateCookie trust boundary (H3)', () => {
     })
     await handleMessage({ action: 'setSession', payload: { tabId: 203, sessionId: 'session_hp1' } }, SENDER)
     await handleMessage(
-      { action: 'updateCookie', payload: { cookieStr: 'secret=hacked' } },
+      { action: 'updateCookie', payload: { cookieStr: 'secret=hacked', expectedProfileId: 'session_hp1' } },
       tabSender(203, 'https://hp.com/page')
     )
     const stored = await chrome.storage.local.get(['cookies_session_hp1'])
     expect(findCookieEntryByName(stored['cookies_session_hp1'], 'secret')?.value).toBe('original')
+  })
+
+  it('allows a same-name page cookie when its path differs from an httpOnly cookie', async () => {
+    await chrome.storage.local.set({
+      profiles: [{ id: 'session_hp_path', name: 'HP path', hue: 0 }],
+      'cookies_session_hp_path': {
+        'sid|hp-path.com|/': { name: 'sid', value: 'server', domain: 'hp-path.com', path: '/', expires: null, httpOnly: true },
+      },
+    })
+    await handleMessage({ action: 'setSession', payload: { tabId: 204, sessionId: 'session_hp_path' } }, SENDER)
+    await handleMessage(
+      { action: 'updateCookie', payload: { setCookieStr: 'sid=page; Path=/app', expectedProfileId: 'session_hp_path' } },
+      tabSender(204, 'https://hp-path.com/app/page')
+    )
+    const stored = (await chrome.storage.local.get(['cookies_session_hp_path']))['cookies_session_hp_path']
+    expect(stored['sid|hp-path.com|/']?.value).toBe('server')
+    expect(stored['sid|hp-path.com|/app']?.value).toBe('page')
   })
 
   it('stores document.cookie writes under the current document host and default path', async () => {
@@ -246,7 +324,7 @@ describe('updateCookie trust boundary (H3)', () => {
     })
     await handleMessage({ action: 'setSession', payload: { tabId: 205, sessionId: 'session_doc_host' } }, SENDER)
     await handleMessage(
-      { action: 'updateCookie', payload: { cookieStr: 'jsid=val' } },
+      { action: 'updateCookie', payload: { cookieStr: 'jsid=val', expectedProfileId: 'session_doc_host' } },
       tabSender(205, 'https://accounts.google.com/login/callback')
     )
 
@@ -277,13 +355,39 @@ describe('updateCookie trust boundary (H3)', () => {
     })
     await handleMessage({ action: 'setSession', payload: { tabId: 206, sessionId: 'session_doc_delete' } }, SENDER)
     await handleMessage(
-      { action: 'updateCookie', payload: { cookieStr: '', deletedNames: ['sid'] } },
+      { action: 'updateCookie', payload: { cookieStr: '', deletedNames: ['sid'], expectedProfileId: 'session_doc_delete' } },
       tabSender(206, 'https://accounts.google.com/login/callback')
     )
 
     const stored = await chrome.storage.local.get(['cookies_session_doc_delete'])
     expect(stored['cookies_session_doc_delete']['sid|accounts.google.com|/login']).toBeUndefined()
     expect(stored['cookies_session_doc_delete']['sid|www.google.com|/']?.value).toBe('www')
+  })
+
+  it('document.cookie deletion preserves a same-name cookie on another path', async () => {
+    await chrome.storage.local.set({
+      profiles: [{ id: 'session_path_delete', name: 'Path', hue: 0 }],
+      'cookies_session_path_delete': {
+        'sid|accounts.google.com|/': {
+          name: 'sid', value: 'root', domain: 'accounts.google.com', path: '/', expires: null,
+        },
+        'sid|accounts.google.com|/app': {
+          name: 'sid', value: 'app', domain: 'accounts.google.com', path: '/app', expires: null,
+        },
+      },
+    })
+    await handleMessage({ action: 'setSession', payload: { tabId: 207, sessionId: 'session_path_delete' } }, SENDER)
+    await handleMessage(
+      {
+        action: 'updateCookie',
+        payload: { setCookieStr: 'sid=; Max-Age=0; Path=/app', expectedProfileId: 'session_path_delete' },
+      },
+      tabSender(207, 'https://accounts.google.com/app/page')
+    )
+
+    const stored = await chrome.storage.local.get(['cookies_session_path_delete'])
+    expect(stored['cookies_session_path_delete']['sid|accounts.google.com|/app']).toBeUndefined()
+    expect(stored['cookies_session_path_delete']['sid|accounts.google.com|/']?.value).toBe('root')
   })
 })
 
@@ -295,7 +399,7 @@ describe('updateCookie setCookieStr — attributes + injection guard (Phase 1)',
     })
     await handleMessage({ action: 'setSession', payload: { tabId: 300, sessionId: 'session_pin' } }, SENDER)
     await handleMessage(
-      { action: 'updateCookie', payload: { setCookieStr: 'sid=v; Domain=.evil.com; Path=/a; Max-Age=3600' } },
+      { action: 'updateCookie', payload: { setCookieStr: 'sid=v; Domain=.evil.com; Path=/a; Max-Age=3600', expectedProfileId: 'session_pin' } },
       tabSender(300, 'https://app.example.com/a/page')
     )
     const store = (await chrome.storage.local.get(['cookies_session_pin']))['cookies_session_pin']
@@ -312,7 +416,7 @@ describe('updateCookie setCookieStr — attributes + injection guard (Phase 1)',
     })
     await handleMessage({ action: 'setSession', payload: { tabId: 301, sessionId: 'session_crlf' } }, SENDER)
     await handleMessage(
-      { action: 'updateCookie', payload: { setCookieStr: 'sid=good\r\nevil=1' } },
+      { action: 'updateCookie', payload: { setCookieStr: 'sid=good\r\nevil=1', expectedProfileId: 'session_crlf' } },
       tabSender(301, 'https://app2.example.com/')
     )
     const store = (await chrome.storage.local.get(['cookies_session_crlf']))['cookies_session_crlf']
@@ -330,7 +434,7 @@ describe('updateCookie setCookieStr — attributes + injection guard (Phase 1)',
     await handleMessage({ action: 'setSession', payload: { tabId: 302, sessionId: 'session_sd' } }, SENDER)
     // Page is at /app but deletes the /admin-scoped cookie via structured target.
     await handleMessage(
-      { action: 'updateCookie', payload: { deleteTargets: [{ name: 'sid', path: '/admin' }] } },
+      { action: 'updateCookie', payload: { deleteTargets: [{ name: 'sid', path: '/admin' }], expectedProfileId: 'session_sd' } },
       tabSender(302, 'https://app3.example.com/app')
     )
     const store = (await chrome.storage.local.get(['cookies_session_sd']))['cookies_session_sd']
@@ -345,11 +449,32 @@ describe('updateCookie setCookieStr — attributes + injection guard (Phase 1)',
     })
     await handleMessage({ action: 'setSession', payload: { tabId: 303, sessionId: 'session_ho' } }, SENDER)
     await handleMessage(
-      { action: 'updateCookie', payload: { setCookieStr: 'secret=hacked' } },
+      { action: 'updateCookie', payload: { setCookieStr: 'secret=hacked', expectedProfileId: 'session_ho' } },
       tabSender(303, 'https://app4.example.com/')
     )
     const store = (await chrome.storage.local.get(['cookies_session_ho']))['cookies_session_ho']
     expect(store['secret|app4.example.com|/']?.value).toBe('orig')
+  })
+})
+
+describe('updateCookie cache freshness', () => {
+  it('rebuilds DNR from a page-written cookie instead of the old cache', async () => {
+    await chrome.storage.local.set({
+      profiles: [{ id: 'session_cache_fresh', name: 'Fresh', hue: 0 }],
+      cookies_session_cache_fresh: {
+        old: { name: 'old', value: '1', domain: 'cache.example.com', path: '/', expires: null },
+      },
+    })
+    await handleMessage({ action: 'setSession', payload: { tabId: 304, sessionId: 'session_cache_fresh' } }, SENDER)
+    chrome.declarativeNetRequest.updateSessionRules.mockClear()
+
+    await handleMessage(
+      { action: 'updateCookie', payload: { setCookieStr: 'fresh=2', expectedProfileId: 'session_cache_fresh' } },
+      tabSender(304, 'https://cache.example.com/')
+    )
+
+    const [{ addRules }] = chrome.declarativeNetRequest.updateSessionRules.mock.calls.at(-1)
+    expect(addRules.some((rule) => rule.action.requestHeaders?.[0]?.value?.includes('fresh=2'))).toBe(true)
   })
 })
 
@@ -365,7 +490,7 @@ describe('getSessionForBootstrap httpOnly filtering (H1)', () => {
     await handleMessage({ action: 'setSession', payload: { tabId: 204, sessionId: 'session_b2' } }, SENDER)
     const result = await handleMessage(
       { action: 'getSessionForBootstrap', payload: { tabId: 204 } },
-      SENDER
+      tabSender(204, 'https://example.com/account')
     )
     expect(result.cookieStr).toContain('visible=show')
     expect(result.cookieStr).not.toContain('hidden=hide')

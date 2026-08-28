@@ -52,6 +52,10 @@ describe('parseSetCookie', () => {
     expect(result.expires).toBeLessThan(before + 65_000)
   })
 
+  it('ignores malformed Max-Age values instead of treating prefixes as numbers', () => {
+    expect(parseSetCookie('x=1; Max-Age=0junk', 'https://example.com/').expires).toBeNull()
+  })
+
   it('parses explicit Domain attribute with dot prefix', () => {
     const result = parseSetCookie('x=1; Domain=example.com', 'https://sub.example.com/')
     expect(result.domain).toBe('.example.com')
@@ -315,7 +319,7 @@ describe('parseDocumentCookie', () => {
 
   it('parses name=value with default path from the request URL', () => {
     const c = parseDocumentCookie('foo=bar', URL)
-    expect(c).toEqual({ name: 'foo', value: 'bar', path: '/sub', expires: null })
+    expect(c).toEqual({ name: 'foo', value: 'bar', path: '/sub', expires: null, secure: false })
   })
 
   it('adopts a page-supplied Path', () => {
@@ -342,6 +346,11 @@ describe('parseDocumentCookie', () => {
 
   it('negative Max-Age yields expires:0', () => {
     expect(parseDocumentCookie('foo=bar; Max-Age=-1', URL).expires).toBe(0)
+  })
+
+  it('rejects SameSite=None without Secure', () => {
+    expect(parseDocumentCookie('foo=bar; SameSite=None', URL)).toBeNull()
+    expect(parseSetCookie('foo=bar; SameSite=None', URL)).toBeNull()
   })
 
   it('returns null when there is no =', () => {
