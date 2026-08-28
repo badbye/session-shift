@@ -17,6 +17,7 @@
   "permissions": [
     "declarativeNetRequest",
     "storage",
+    "cookies",
     "tabs",
     "webRequest",
     "webNavigation",

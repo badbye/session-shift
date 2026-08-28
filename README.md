@@ -5,6 +5,8 @@ parallel, with one session assigned to each tab.
 
 This repository is based on the original [SessionShift project](https://github.com/anhkiet75/session-shift). The list below describes only the features added or substantially extended in this repository.
 
+The Storage tab also references the interface and inspection workflow of [Storage Inspector](https://github.com/evilcos/storage-inspector), a Chrome extension for inspecting localStorage, sessionStorage, and Cookies. SessionShift integrates the relevant inspection experience into its existing popup: the displayed data is always scoped to the current page and current Profile. Local and session storage are read through the active Profile's namespace, while Cookies come from that Profile's isolated store; the Default Profile reads the browser's current Cookie container. This integration is Profile-aware and does not turn the normal Profile/Rule export into a session backup.
+
 ## Added and extended capabilities
 
 - **Global Profile management** — Replaced the original per-site session-list model with reusable Profiles shared across sites. Profiles have stable IDs and can be renamed, recolored, duplicated, or deleted.

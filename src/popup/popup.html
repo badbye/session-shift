@@ -56,6 +56,7 @@
     <div class="v2-view-tabs" role="tablist" aria-label="Configuration views">
       <button id="profilesViewTab" class="v2-view-tab active" role="tab" aria-selected="true" aria-controls="profilesView" data-i18n="profilesViewTab">Profiles</button>
       <button id="rulesViewTab" class="v2-view-tab" role="tab" aria-selected="false" aria-controls="rulesView" data-i18n="rulesViewTab">Rules</button>
+      <button id="storageViewTab" class="v2-view-tab" role="tab" aria-selected="false" aria-controls="storageView">Storage</button>
     </div>
 
     <div id="profilesView" role="tabpanel" aria-labelledby="profilesViewTab">
@@ -128,6 +129,53 @@
             <button id="btnSaveRule" class="v2-rule-save-btn" type="submit" data-i18n="ruleSave">Save rule</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="storageView" class="v2-storage-view" role="tabpanel" aria-labelledby="storageViewTab" hidden>
+      <div class="v2-storage-context-row">
+        <div id="storageContext" class="v2-storage-context" dir="auto"></div>
+        <button id="storageRefresh" class="v2-storage-refresh" type="button" aria-label="Refresh" title="Refresh">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M13 5.5A5 5 0 1 0 14 9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M13 2.5v3h-3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <div class="v2-storage-subtabs" role="tablist" aria-label="Storage sections">
+        <button class="v2-storage-subtab active" type="button" role="tab" aria-selected="true" aria-controls="storagePanel" data-storage-tab="localStorage">
+          <span>Local</span><span class="v2-storage-count" data-storage-count>0</span>
+        </button>
+        <button class="v2-storage-subtab" type="button" role="tab" aria-selected="false" aria-controls="storagePanel" data-storage-tab="sessionStorage">
+          <span>Session</span><span class="v2-storage-count" data-storage-count>0</span>
+        </button>
+        <button class="v2-storage-subtab" type="button" role="tab" aria-selected="false" aria-controls="storagePanel" data-storage-tab="cookies">
+          <span>Cookies</span><span class="v2-storage-count" data-storage-count>0</span>
+        </button>
+      </div>
+
+      <div class="v2-storage-search-wrap">
+        <svg class="v2-storage-search-icon" width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="4.5" stroke="currentColor" stroke-width="1.5"/><path d="M10.5 10.5L13 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input id="storageSearch" class="v2-storage-search" type="search" placeholder="Search storage…" autocomplete="off" spellcheck="false" aria-label="Search storage">
+        <button id="storageClearSearch" class="v2-storage-clear" type="button" aria-label="Clear search" hidden>×</button>
+      </div>
+      <div id="storageStatus" class="v2-storage-status" role="status" aria-live="polite"></div>
+
+      <div id="storagePanel" role="tabpanel" aria-label="Storage data">
+        <div id="storageList" class="v2-storage-list" aria-live="polite"></div>
+        <div id="storageEmpty" class="v2-storage-empty" hidden>
+          <div id="storageEmptyTitle" class="v2-storage-empty-title">No data</div>
+          <div id="storageEmptySubtitle" class="v2-storage-empty-subtitle">This Profile has no stored values for the current page.</div>
+        </div>
+        <div id="storagePagination" class="v2-storage-pagination" hidden>
+          <button id="storagePreviousPage" class="v2-storage-page-button" type="button" aria-label="Previous page">‹</button>
+          <span id="storagePageInfo" class="v2-storage-page-info">1 / 1</span>
+          <button id="storageNextPage" class="v2-storage-page-button" type="button" aria-label="Next page">›</button>
+          <select id="storagePageSize" class="v2-storage-page-size" aria-label="Items per page">
+            <option value="10">10</option>
+            <option value="20">20</option>
+            <option value="50">50</option>
+          </select>
+          <span id="storagePageTotal" class="v2-storage-page-total">0 items</span>
+        </div>
       </div>
     </div>
 

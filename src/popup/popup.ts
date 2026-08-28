@@ -7,6 +7,7 @@ import { getSavedSessions } from './popup-session-storage.js';
 import { updateHero } from './popup-hero-updater.js';
 import { renderSessionList } from './popup-render-profile-list.js';
 import { createRuleView } from './popup-rule-view.js';
+import { createStorageView } from './popup-storage-view.js';
 import { getRules } from '../lib/rule-store.js';
 import { getLanguagePreference, createLocalizer, applyDocumentLocale, localizeDocument } from '../lib/localization.js';
 import type { Localizer } from '../lib/localization.js';
@@ -216,29 +217,46 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const profilesView = document.getElementById('profilesView')!;
     const rulesView = document.getElementById('rulesView')!;
+    const storageViewElement = document.getElementById('storageView')!;
     const profilesViewTab = document.getElementById('profilesViewTab')!;
     const rulesViewTab = document.getElementById('rulesViewTab')!;
+    const storageViewTab = document.getElementById('storageViewTab')!;
     const ruleView = createRuleView({
       root: rulesView,
       profiles: getSavedSessions,
       currentUrl: () => currentTab.url || '',
       localizer,
     });
+    const storageView = createStorageView({
+      root: storageViewElement,
+      tabId: currentTab.id,
+      currentUrl: currentTab.url || '',
+      currentProfileId: currentSessionObj ? currentSessionId : 'default',
+      currentProfileName: currentSessionObj?.name || localizer.getMessage('heroDefaultName') || 'Default',
+      localizer,
+    });
     void ruleView.refresh();
 
-    function selectView(view: 'profiles' | 'rules'): void {
+    function selectView(view: 'profiles' | 'rules' | 'storage'): void {
       const profilesActive = view === 'profiles';
+      const rulesActive = view === 'rules';
+      const storageActive = view === 'storage';
       profilesView.hidden = !profilesActive;
-      rulesView.hidden = profilesActive;
+      rulesView.hidden = !rulesActive;
+      storageViewElement.hidden = !storageActive;
       profilesViewTab.classList.toggle('active', profilesActive);
-      rulesViewTab.classList.toggle('active', !profilesActive);
+      rulesViewTab.classList.toggle('active', rulesActive);
+      storageViewTab.classList.toggle('active', storageActive);
       profilesViewTab.setAttribute('aria-selected', String(profilesActive));
-      rulesViewTab.setAttribute('aria-selected', String(!profilesActive));
-      if (!profilesActive) void ruleView.refresh();
+      rulesViewTab.setAttribute('aria-selected', String(rulesActive));
+      storageViewTab.setAttribute('aria-selected', String(storageActive));
+      if (rulesActive) void ruleView.refresh();
+      if (storageActive) void storageView.refresh();
     }
 
     profilesViewTab.addEventListener('click', () => selectView('profiles'));
     rulesViewTab.addEventListener('click', () => selectView('rules'));
+    storageViewTab.addEventListener('click', () => selectView('storage'));
 
     searchInput.addEventListener('input', (e) => {
       searchQuery = (e.target as HTMLInputElement).value;
