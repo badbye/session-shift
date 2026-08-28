@@ -69,6 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const createRow     = document.getElementById('createRow')!;
     const btnNewSession = document.getElementById('btnNewSession') as HTMLButtonElement;
     const savedList     = document.getElementById('savedSessionsList')!;
+    const resetFooter   = document.getElementById('resetFooter')!;
     const resetArea     = document.getElementById('resetArea')!;
     const btnDefault    = document.getElementById('btnDefault') as HTMLButtonElement;
 
@@ -113,13 +114,21 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (cached) cached.hue = hue;
     });
 
-    btnDefault.disabled = !canIsolatePage || currentSessionId === 'default';
+    // An orphaned tab binding is rendered as Default by the hero. Treat it as
+    // Default here too, otherwise the reset action would be shown for a
+    // profile that no longer exists.
+    const canResetToDefault = canIsolatePage
+      && currentSessionId !== 'default'
+      && currentSessionObj !== undefined;
+    resetFooter.hidden = !canResetToDefault;
+    btnDefault.disabled = !canResetToDefault;
+    document.getElementById('profilesView')?.classList.toggle('reset-hidden', !canResetToDefault);
 
     function buildResetButton(): HTMLButtonElement {
       const btn = document.createElement('button');
       btn.id = 'btnDefault';
       btn.className = 'v2-reset';
-      btn.disabled = currentSessionId === 'default';
+      btn.disabled = !canResetToDefault;
       btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8a5 5 0 1 0 1.5-3.5M3 3v3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       const label = document.createElement('span');
       label.textContent = localizer.getMessage('resetToDefault') || 'Reset to default';
@@ -128,6 +137,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function showResetButton(): void {
+      if (!canResetToDefault) return;
+      resetFooter.hidden = false;
       resetArea.replaceChildren(buildResetButton());
       document.getElementById('btnDefault')!.addEventListener('click', showConfirm);
     }
@@ -159,7 +170,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     }
 
-    btnDefault.addEventListener('click', showConfirm);
+    if (canResetToDefault) btnDefault.addEventListener('click', showConfirm);
 
     inputEl.addEventListener('focus', () => createRow.classList.add('focused'));
     inputEl.addEventListener('blur',  () => createRow.classList.remove('focused'));

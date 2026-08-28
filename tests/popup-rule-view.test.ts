@@ -11,23 +11,26 @@ function deferred<T>(): { promise: Promise<T>; resolve: (value: T) => void } {
 function makeRuleViewRoot(): HTMLElement {
   const root = document.createElement('div')
   root.innerHTML = `
-    <button id="btnNewRule" type="button"></button>
-    <div id="ruleList"></div>
-    <form id="ruleForm" hidden>
-      <div id="ruleFormTitle"></div>
-      <input id="ruleName">
-      <select id="ruleProfile"></select>
-      <select id="ruleScheme"><option value="https">https</option></select>
-      <input id="ruleHostname">
-      <input id="rulePort">
-      <input id="ruleRegex">
-      <input id="ruleEnabled" type="checkbox" checked>
-      <input id="rulePriority" value="100">
-      <input id="ruleTestUrl">
-      <div id="rulePreview"></div>
-      <div id="ruleFormError"></div>
-      <button id="btnCancelRule" type="button"></button>
-    </form>
+    <button id="ruleListTab" type="button"></button>
+    <button id="ruleFormTab" type="button"></button>
+    <div id="ruleListPanel"><div id="ruleList"></div></div>
+    <div id="ruleFormPanel" hidden>
+      <form id="ruleForm">
+        <div id="ruleFormTitle"></div>
+        <input id="ruleName">
+        <select id="ruleProfile"></select>
+        <select id="ruleScheme"><option value="https">https</option></select>
+        <input id="ruleHostname">
+        <input id="rulePort">
+        <input id="ruleRegex">
+        <input id="ruleEnabled" type="checkbox" checked>
+        <input id="rulePriority" value="100">
+        <input id="ruleTestUrl">
+        <div id="rulePreview"></div>
+        <div id="ruleFormError"></div>
+        <button id="btnCancelRule" type="button"></button>
+      </form>
+    </div>
     <button id="btnUseCurrentUrl" type="button"></button>
   `
   document.body.appendChild(root)
@@ -55,14 +58,21 @@ describe('popup RuleView profile options', () => {
       localizer: { preference: 'system', languageTag: 'en', direction: 'ltr', getMessage: () => '' },
     })
 
-    root.querySelector<HTMLButtonElement>('#btnNewRule')!.click()
+    root.querySelector<HTMLButtonElement>('#ruleFormTab')!.click()
     const refresh = view.refresh()
     await refresh
+
+    expect(root.querySelector<HTMLElement>('#ruleListPanel')!.hidden).toBe(true)
+    expect(root.querySelector<HTMLElement>('#ruleFormPanel')!.hidden).toBe(false)
 
     firstLoad.resolve([profile])
     await new Promise<void>((resolve) => setTimeout(resolve, 0))
 
     expect([...root.querySelectorAll<HTMLOptionElement>('#ruleProfile option')].map((option) => option.value))
       .toEqual(['profile_a', 'profile_b'])
+
+    root.querySelector<HTMLButtonElement>('#ruleListTab')!.click()
+    expect(root.querySelector<HTMLElement>('#ruleListPanel')!.hidden).toBe(false)
+    expect(root.querySelector<HTMLElement>('#ruleFormPanel')!.hidden).toBe(true)
   })
 })

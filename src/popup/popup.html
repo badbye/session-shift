@@ -94,36 +94,45 @@
           <div class="v2-list-head-title" data-i18n="rulesViewTab">Rules</div>
           <div class="v2-rules-subtitle" data-i18n="rulesViewSubtitle">Automatically bind URLs to Profiles</div>
         </div>
-        <button id="btnNewRule" class="v2-rule-new-btn" type="button" data-i18n="newRuleButton">New rule</button>
       </div>
-      <div id="ruleList" class="v2-rule-list" aria-live="polite"></div>
-      <form id="ruleForm" class="v2-rule-form" hidden>
-        <div class="v2-rule-form-title" id="ruleFormTitle" data-i18n="ruleFormNew">New rule</div>
-        <label class="v2-rule-field"><span data-i18n="ruleFieldName">Name</span><input id="ruleName" required maxlength="200" autocomplete="off"></label>
-        <label class="v2-rule-field"><span data-i18n="ruleFieldProfile">Profile</span><select id="ruleProfile" required></select></label>
-        <div class="v2-rule-grid">
-          <label class="v2-rule-field"><span data-i18n="ruleFieldScheme">Scheme</span><select id="ruleScheme" required><option value="https">https</option><option value="http">http</option></select></label>
-          <label class="v2-rule-field"><span data-i18n="ruleFieldPort">Port</span><input id="rulePort" type="number" min="1" max="65535" inputmode="numeric" placeholder="Any"></label>
-        </div>
-        <label class="v2-rule-field"><span data-i18n="ruleFieldHostname">Hostname</span><input id="ruleHostname" required maxlength="253" autocomplete="off" placeholder="dev.example.com"></label>
-        <label class="v2-rule-field"><span data-i18n="ruleFieldUrlRegex">URL regex</span> <span class="v2-rule-optional" data-i18n="ruleOptional">optional</span><input id="ruleRegex" maxlength="500" autocomplete="off" placeholder="^https://dev\\.example\\.com/"></label>
-        <div class="v2-rule-grid">
-          <label class="v2-rule-field v2-rule-check"><input id="ruleEnabled" type="checkbox" checked> <span data-i18n="ruleEnabled">Enabled</span></label>
-          <label class="v2-rule-field"><span data-i18n="rulePriority">Priority</span><input id="rulePriority" type="number" min="0" max="1000000" value="100" inputmode="numeric"></label>
-        </div>
-        <button id="btnUseCurrentUrl" class="v2-rule-secondary-btn" type="button" data-i18n="ruleUseCurrentUrl">Use current URL</button>
-        <label class="v2-rule-field"><span data-i18n="ruleTestUrl">Test URL</span><input id="ruleTestUrl" type="url" autocomplete="off" placeholder="https://dev.example.com/"></label>
-        <div id="rulePreview" class="v2-rule-preview" aria-live="polite"></div>
-        <div id="ruleFormError" class="v2-rule-error" role="alert" hidden></div>
-        <div class="v2-rule-form-actions">
-          <button id="btnCancelRule" class="v2-rule-secondary-btn" type="button" data-i18n="ruleCancel">Cancel</button>
-          <button id="btnSaveRule" class="v2-rule-save-btn" type="submit" data-i18n="ruleSave">Save rule</button>
-        </div>
-      </form>
+      <div class="v2-rule-subtabs" role="tablist" aria-label="Rule sections">
+        <button id="ruleListTab" class="v2-rule-subtab active" type="button" role="tab" aria-selected="true" aria-controls="ruleListPanel" data-i18n="rulesViewTab">Rules</button>
+        <button id="ruleFormTab" class="v2-rule-subtab" type="button" role="tab" aria-selected="false" aria-controls="ruleFormPanel" data-i18n="newRuleButton">New rule</button>
+      </div>
+
+      <div id="ruleListPanel" role="tabpanel" aria-labelledby="ruleListTab">
+        <div id="ruleList" class="v2-rule-list" aria-live="polite"></div>
+      </div>
+
+      <div id="ruleFormPanel" role="tabpanel" aria-labelledby="ruleFormTab" hidden>
+        <form id="ruleForm" class="v2-rule-form">
+          <div class="v2-rule-form-title" id="ruleFormTitle" data-i18n="ruleFormNew">New rule</div>
+          <label class="v2-rule-field"><span data-i18n="ruleFieldName">Name</span><input id="ruleName" required maxlength="200" autocomplete="off"></label>
+          <label class="v2-rule-field"><span data-i18n="ruleFieldProfile">Profile</span><select id="ruleProfile" required></select></label>
+          <div class="v2-rule-grid">
+            <label class="v2-rule-field"><span data-i18n="ruleFieldScheme">Scheme</span><select id="ruleScheme" required><option value="https">https</option><option value="http">http</option></select></label>
+            <label class="v2-rule-field"><span data-i18n="ruleFieldPort">Port</span><input id="rulePort" type="number" min="1" max="65535" inputmode="numeric" placeholder="Any"></label>
+          </div>
+          <label class="v2-rule-field"><span data-i18n="ruleFieldHostname">Hostname</span><input id="ruleHostname" required maxlength="253" autocomplete="off" placeholder="dev.example.com"></label>
+          <label class="v2-rule-field"><span data-i18n="ruleFieldUrlRegex">URL regex</span> <span class="v2-rule-optional" data-i18n="ruleOptional">optional</span><input id="ruleRegex" maxlength="500" autocomplete="off" placeholder="^https://dev\\.example\\.com/"></label>
+          <div class="v2-rule-grid">
+            <label class="v2-rule-field v2-rule-check"><input id="ruleEnabled" type="checkbox" checked> <span data-i18n="ruleEnabled">Enabled</span></label>
+            <label class="v2-rule-field"><span data-i18n="rulePriority">Priority</span><input id="rulePriority" type="number" min="0" max="1000000" value="100" inputmode="numeric"></label>
+          </div>
+          <button id="btnUseCurrentUrl" class="v2-rule-secondary-btn" type="button" data-i18n="ruleUseCurrentUrl">Use current URL</button>
+          <label class="v2-rule-field"><span data-i18n="ruleTestUrl">Test URL</span><input id="ruleTestUrl" type="url" autocomplete="off" placeholder="https://dev.example.com/"></label>
+          <div id="rulePreview" class="v2-rule-preview" aria-live="polite"></div>
+          <div id="ruleFormError" class="v2-rule-error" role="alert" hidden></div>
+          <div class="v2-rule-form-actions">
+            <button id="btnCancelRule" class="v2-rule-secondary-btn" type="button" data-i18n="ruleCancel">Cancel</button>
+            <button id="btnSaveRule" class="v2-rule-save-btn" type="submit" data-i18n="ruleSave">Save rule</button>
+          </div>
+        </form>
+      </div>
     </div>
 
     <!-- FOOTER -->
-    <div class="v2-footer">
+    <div id="resetFooter" class="v2-footer">
       <div id="resetArea">
         <button id="btnDefault" class="v2-reset">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8a5 5 0 1 0 1.5-3.5M3 3v3h3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>

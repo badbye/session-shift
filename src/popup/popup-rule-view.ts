@@ -54,9 +54,23 @@ export function createRuleView(options: RuleViewOptions): { refresh: () => Promi
   let profileFillVersion = 0
 
   const list = root.querySelector('#ruleList') as HTMLElement
+  const listPanel = root.querySelector('#ruleListPanel') as HTMLElement
+  const formPanel = root.querySelector('#ruleFormPanel') as HTMLElement
+  const listTab = root.querySelector('#ruleListTab') as HTMLButtonElement
+  const formTab = root.querySelector('#ruleFormTab') as HTMLButtonElement
   const form = root.querySelector('#ruleForm') as HTMLFormElement
   const error = root.querySelector('#ruleFormError') as HTMLElement
   const preview = root.querySelector('#rulePreview') as HTMLElement
+
+  function selectSubtab(tab: 'list' | 'form'): void {
+    const listActive = tab === 'list'
+    listPanel.hidden = !listActive
+    formPanel.hidden = listActive
+    listTab.classList.toggle('active', listActive)
+    formTab.classList.toggle('active', !listActive)
+    listTab.setAttribute('aria-selected', String(listActive))
+    formTab.setAttribute('aria-selected', String(!listActive))
+  }
 
   function showError(message: string): void {
     error.hidden = !message
@@ -65,7 +79,7 @@ export function createRuleView(options: RuleViewOptions): { refresh: () => Promi
 
   function resetForm(): void {
     editingRuleId = null
-    form.hidden = true
+    selectSubtab('list')
     showError('')
     preview.textContent = ''
   }
@@ -103,7 +117,7 @@ export function createRuleView(options: RuleViewOptions): { refresh: () => Promi
   }
 
   async function refreshProfileOptions(): Promise<void> {
-    if (form.hidden) return
+    if (formPanel.hidden) return
     const select = byId<HTMLSelectElement>('ruleProfile')
     await fillProfiles(select.value)
   }
@@ -120,7 +134,7 @@ export function createRuleView(options: RuleViewOptions): { refresh: () => Promi
     byId<HTMLInputElement>('rulePriority').value = String(rule?.priority ?? 100)
     byId<HTMLInputElement>('ruleTestUrl').value = currentUrl()
     void fillProfiles(rule?.profileId)
-    form.hidden = false
+    selectSubtab('form')
     showError('')
     updatePreview()
   }
@@ -250,13 +264,10 @@ export function createRuleView(options: RuleViewOptions): { refresh: () => Promi
 
   async function refresh(): Promise<void> {
     const [rules, profiles] = await Promise.all([getRules(), loadProfiles()])
-    const newRuleButton = root.querySelector('#btnNewRule') as HTMLButtonElement | null
-    if (newRuleButton) {
-      newRuleButton.disabled = profiles.length === 0
-      newRuleButton.title = profiles.length === 0
-        ? text(localizer, 'ruleCreateProfileFirst', 'Create a Profile first')
-        : text(localizer, 'newRuleButton', 'New rule')
-    }
+    formTab.disabled = profiles.length === 0
+    formTab.title = profiles.length === 0
+      ? text(localizer, 'ruleCreateProfileFirst', 'Create a Profile first')
+      : text(localizer, 'newRuleButton', 'New rule')
     list.replaceChildren()
     if (rules.length === 0) {
       const empty = document.createElement('div')
@@ -271,7 +282,8 @@ export function createRuleView(options: RuleViewOptions): { refresh: () => Promi
     await refreshProfileOptions()
   }
 
-  root.querySelector('#btnNewRule')?.addEventListener('click', () => {
+  listTab.addEventListener('click', () => selectSubtab('list'))
+  formTab.addEventListener('click', () => {
     editingRuleId = null
     populateForm()
   })
