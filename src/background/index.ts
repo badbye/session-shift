@@ -21,7 +21,8 @@ import {
 export { handleMessage };
 
 function isClosedSenderFrameError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
+  const errorMessage = (error as { message?: unknown } | null)?.message;
+  const message = typeof errorMessage === 'string' ? errorMessage : String(error);
   return /Frame with ID \d+ was removed\.?$/.test(message)
     || /The message port closed before a response was received\.?$/.test(message);
 }

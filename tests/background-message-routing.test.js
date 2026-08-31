@@ -21,7 +21,9 @@ describe('background message routing', () => {
   it('silently drops a response when the sender frame navigated away', async () => {
     const listener = await loadMessageListener()
     const sendResponse = vi.fn(() => {
-      throw new Error('Frame with ID 0 was removed.')
+      // Chrome API errors can originate from a different realm and do not
+      // necessarily satisfy `error instanceof Error` in the service worker.
+      throw { message: 'Frame with ID 0 was removed.' }
     })
 
     expect(listener({ action: 'getRules' }, { id: chrome.runtime.id }, sendResponse)).toBe(true)
