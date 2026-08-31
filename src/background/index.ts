@@ -20,6 +20,27 @@ import {
 
 export { handleMessage };
 
+function isClosedSenderFrameError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /Frame with ID \d+ was removed\.?$/.test(message)
+    || /The message port closed before a response was received\.?$/.test(message);
+}
+
+function sendResponseIfOpen(
+  sendResponse: (response?: unknown) => void,
+  response: unknown,
+): void {
+  try {
+    sendResponse(response);
+  } catch (error) {
+    // A content-script frame can be destroyed while an async message handler is
+    // awaiting storage or DNR work. There is no recipient left to notify.
+    if (!isClosedSenderFrameError(error)) {
+      console.warn('[bg] response delivery failed:', error);
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Startup
 // ---------------------------------------------------------------------------
@@ -83,10 +104,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
   restored
     .then(() => handleMessage(request as BackgroundMessage, sender))
-    .then(sendResponse)
+    .then((response) => sendResponseIfOpen(sendResponse, response))
     .catch((err: Error) => {
+      // A frame can disappear while a handler is still resolving its request.
+      // Treat that navigation race as a completed, unobservable request rather
+      // than reporting it as a background failure.
+      if (isClosedSenderFrameError(err)) return;
       console.error('[bg] message error:', err);
-      sendResponse({ error: err.message });
+      sendResponseIfOpen(sendResponse, { error: err.message });
     });
   return true;
 });
