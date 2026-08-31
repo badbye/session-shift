@@ -65,53 +65,11 @@ async function createBootstrapAuthorization(
   return { bootstrapToken, bootstrapProof: bytesToBase64(signature), bootstrapProofPayload }
 }
 
-// Runs in the page's MAIN world through chrome.scripting. It has no closure
-// state and is intentionally not exposed on window, so a page script cannot
-// forge the default-session transition by dispatching a DOM/message event.
-function restoreDefaultSessionApisInMainWorld(): void {
-  try { delete (document as unknown as Record<string, unknown>).cookie; } catch { /* best effort */ }
-  const globals = window as unknown as Record<string, unknown>;
-  const nativeFetch = (globals.fetch as { __sessionShiftNativeFetch?: unknown } | undefined)?.__sessionShiftNativeFetch;
-  const nativeCaches = (globals.caches as { __sessionShiftNativeCaches?: unknown } | undefined)?.__sessionShiftNativeCaches;
-  for (const name of ['localStorage', 'sessionStorage', 'indexedDB', 'cookieStore', 'caches']) {
-    try { delete (window as unknown as Record<string, unknown>)[name]; } catch { /* best effort */ }
-  }
-  if (nativeCaches) {
-    try { Object.defineProperty(window, 'caches', { configurable: true, enumerable: true, value: nativeCaches }); } catch { /* best effort */ }
-  }
-  if (nativeFetch) {
-    try { delete globals.fetch; } catch { /* best effort */ }
-    try { Object.defineProperty(window, 'fetch', { configurable: true, enumerable: true, value: nativeFetch }); } catch { /* best effort */ }
-  }
-  // XMLHttpRequest is wrapped on a subclass, leaving the browser's native
-  // prototype untouched. Only remove an own property when that wrapper is
-  // actually present; deleting an unwrapped native Window property could make
-  // XHR disappear on browsers without a prototype fallback.
-  if (Object.prototype.hasOwnProperty.call(window, 'XMLHttpRequest')) {
-    try { delete globals.XMLHttpRequest; } catch { /* best effort */ }
-  }
-}
-
 export async function handleMessage(
   request: BackgroundMessage,
   sender: chrome.runtime.MessageSender
 ): Promise<unknown> {
   switch (request.action) {
-    case 'restoreDefaultSessionApis': {
-      const tabId = sender.tab?.id;
-      if (tabId === undefined || typeof chrome.scripting?.executeScript !== 'function') {
-        return { error: 'cannot restore default APIs' };
-      }
-      const target = sender.documentId
-        ? { tabId, documentIds: [sender.documentId] }
-        : { tabId, frameIds: [sender.frameId ?? 0] };
-      await chrome.scripting.executeScript({
-        target,
-        world: 'MAIN',
-        func: restoreDefaultSessionApisInMainWorld,
-      });
-      return { success: true };
-    }
     case 'setSession': {
       const { tabId, sessionId } = request.payload;
       if (typeof tabId !== 'number' || typeof sessionId !== 'string') {

@@ -61,7 +61,6 @@ export type BackgroundMessage =
   | { action: 'setSession'; payload: { tabId: number; sessionId: string } }
   | { action: 'getSession'; payload?: { tabId?: number } }
   | { action: 'restoreAutoMatch'; payload: { tabId: number } }
-  | { action: 'restoreDefaultSessionApis' }
   | {
       action: 'getSessionForBootstrap'
       payload?: { tabId?: number; challenge?: string }

@@ -11,7 +11,6 @@
   let activeNonce = '';
   let isolationBootstrapped = false;
   let pendingBootstrapAck: (() => void) | null = null;
-  let pendingDefaultRestore: Promise<unknown> = Promise.resolve();
   let bootstrapTransition = Promise.resolve();
 
   type BootstrapAuthorization = {
@@ -25,14 +24,6 @@
       || typeof response.bootstrapProof !== 'string'
       || typeof response.bootstrapProofPayload !== 'string') return undefined;
     return response;
-  }
-
-  function requestDefaultRestore(): Promise<unknown> {
-    try {
-      return chrome.runtime.sendMessage({ action: 'restoreDefaultSessionApis' });
-    } catch {
-      return Promise.resolve();
-    }
   }
 
   function postInitNonce(
@@ -64,13 +55,14 @@
   ): Promise<void> {
     const transition = bootstrapTransition.then(async () => {
       if (sessionId === 'default') {
+        // Default documents never initialize MAIN-world isolation proxies.
+        // The UI reloads after a profile reset, so the new document retains the
+        // browser's native APIs without a destructive restore step.
         activeSessionId = 'default';
         activeCookieStr = '';
         activeCookieEntries = [];
         activeNonce = '';
         isolationBootstrapped = false;
-        pendingDefaultRestore = requestDefaultRestore();
-        await pendingDefaultRestore.catch(() => {});
         return;
       }
       if (!authorization) return;
@@ -78,9 +70,6 @@
       // without a reload. Re-send the authenticated identity so the existing
       // MAIN-world proxy can atomically move its storage/cookie view as well.
       if (isolationBootstrapped && activeSessionId === sessionId) return;
-      // Do not let a late trusted restore script remove a newly installed
-      // profile wrapper. Transitions are serialized per frame.
-      if (!isolationBootstrapped) await pendingDefaultRestore.catch(() => {});
       activeSessionId = sessionId;
       activeCookieStr = cookieStr;
       activeCookieEntries = cookieEntries;

@@ -1,6 +1,37 @@
 import { test, expect } from './extension-fixtures'
 
 test.describe('Cookie isolation', () => {
+  test('a default-session page retains native XHR, fetch, and Web Storage', async ({
+    context, mockServerUrl,
+  }) => {
+    const tab = await context.newPage()
+    await tab.goto(`${mockServerUrl}/cookies?t=default-native-apis`)
+
+    const pageApis = await tab.evaluate(() => {
+      const storageKey = '__session_shift_default_api_check__'
+      localStorage.setItem(storageKey, 'available')
+      const localStorageValue = localStorage.getItem(storageKey)
+      localStorage.removeItem(storageKey)
+
+      const xhr = new XMLHttpRequest()
+      return {
+        xhrType: typeof XMLHttpRequest,
+        xhrCanOpen: typeof xhr.open === 'function',
+        fetchType: typeof fetch,
+        localStorageValue,
+        sessionStorageGetItemType: typeof sessionStorage.getItem,
+      }
+    })
+
+    expect(pageApis).toEqual({
+      xhrType: 'function',
+      xhrCanOpen: true,
+      fetchType: 'function',
+      localStorageValue: 'available',
+      sessionStorageGetItemType: 'function',
+    })
+  })
+
   /**
    * Core isolation test: assigns two sessions to two real tabs via `setSession`
    * (which applies DNR rules), then verifies that each tab only sees its own
@@ -329,5 +360,12 @@ test.describe('Cookie isolation', () => {
       { tabId },
     )
     expect(after.sessionId).toBe('default')
+
+    await tab.reload()
+    const xhr = await tab.evaluate(() => ({
+      type: typeof XMLHttpRequest,
+      canOpen: typeof new XMLHttpRequest().open === 'function',
+    }))
+    expect(xhr).toEqual({ type: 'function', canOpen: true })
   })
 })

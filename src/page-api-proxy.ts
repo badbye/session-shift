@@ -23,16 +23,6 @@
   const nativeIndexedDB = window.indexedDB;
   const nativeCookieStore = window.cookieStore;
   const nativeCaches = window.caches;
-  const nativeCachesDescriptor = Object.getOwnPropertyDescriptor(window, 'caches');
-  const nativeFetchDescriptor = Object.getOwnPropertyDescriptor(window, 'fetch');
-  const nativeXhrPrototype = window.XMLHttpRequest?.prototype;
-  const nativeXhrWindowDescriptor = Object.getOwnPropertyDescriptor(window, 'XMLHttpRequest');
-  const nativeXhrDescriptors = nativeXhrPrototype ? {
-    open: Object.getOwnPropertyDescriptor(nativeXhrPrototype, 'open'),
-    send: Object.getOwnPropertyDescriptor(nativeXhrPrototype, 'send'),
-    addEventListener: Object.getOwnPropertyDescriptor(nativeXhrPrototype, 'addEventListener'),
-    removeEventListener: Object.getOwnPropertyDescriptor(nativeXhrPrototype, 'removeEventListener'),
-  } : null;
 
   // The initial profile identity must be authorized by the service worker. A
   // page can forge same-window postMessage events, so a content-script nonce
@@ -385,11 +375,6 @@
     match: () => Promise.resolve(undefined),
     matchAll: () => Promise.resolve([]),
   };
-  Object.defineProperty(blockedCaches, '__sessionShiftNativeCaches', {
-    configurable: true,
-    value: nativeCaches,
-  });
-
   let activeProfileSessionId = '';
   let activeProfileNonce = '';
   let activeProfilePrefix = '';
@@ -905,13 +890,6 @@
         throw error;
       }
     };
-    // Some browsers expose fetch only as an own Window property. Preserve the
-    // original callable on the wrapper so the trusted default-world restorer
-    // can put it back after deleting the isolation wrapper.
-    Object.defineProperty(fetchProxy, '__sessionShiftNativeFetch', {
-      configurable: true,
-      value: nativeFetch,
-    });
     Object.defineProperty(window, 'fetch', {
       configurable: true,
       enumerable: true,
@@ -927,10 +905,8 @@
   // APIs.
   const NativeXhr = window.XMLHttpRequest;
   if (NativeXhr) {
-    // Keep the native prototype untouched. Restoring the default session can
-    // then be performed by a trusted MAIN-world executeScript call simply by
-    // deleting this wrapper from window, without exposing a page-callable
-    // restore hook or relying on a forgeable postMessage signal.
+    // Keep the native prototype untouched. Default-session documents never
+    // install this wrapper, and UI profile resets reload the tab.
     const Xhr = class SessionShiftXMLHttpRequest extends NativeXhr {};
     Object.defineProperty(window, 'XMLHttpRequest', {
       configurable: true,
@@ -1425,10 +1401,6 @@
         }
         return matches;
       },
-    });
-    Object.defineProperty(cacheProxy, '__sessionShiftNativeCaches', {
-      configurable: true,
-      value: nativeCaches,
     });
     Object.defineProperty(window, 'caches', {
       configurable: true, enumerable: true, value: cacheProxy,
