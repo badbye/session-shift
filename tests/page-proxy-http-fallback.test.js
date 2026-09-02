@@ -39,7 +39,7 @@ function dispatchInit(data) {
 }
 
 describe('page-api-proxy insecure-origin fallback', () => {
-  it('fails closed when HTTP has no SubtleCrypto instead of exposing native storage', async () => {
+  it('keeps native APIs for an HTTP document until a signed Profile carrier arrives', async () => {
     vi.resetModules()
     const nativeLocalStorage = window.localStorage
     const nativeSessionStorage = window.sessionStorage
@@ -50,11 +50,8 @@ describe('page-api-proxy insecure-origin fallback', () => {
 
     await import('../src/page-api-proxy.ts')
 
-    expect(window.localStorage).not.toBe(nativeLocalStorage)
-    expect(window.sessionStorage).not.toBe(nativeSessionStorage)
-    expect(window.localStorage.getItem('shared')).toBeNull()
-    expect(window.sessionStorage.getItem('shared')).toBeNull()
-    expect(document.cookie).toBe('')
+    expect(window.localStorage).toBe(nativeLocalStorage)
+    expect(window.sessionStorage).toBe(nativeSessionStorage)
   })
 
   it('still initializes a legitimate profile on HTTP using the packaged verifier', async () => {
@@ -90,6 +87,23 @@ describe('page-api-proxy insecure-origin fallback', () => {
     window.localStorage.setItem('profile-key', 'profile-value')
     expect(window.localStorage.getItem('profile-key')).toBe('profile-value')
     expect(document.cookie).toContain('profile_cookie=profile_value')
+    window.dispatchEvent(new MessageEvent('message', {
+      data: { source: 'ext-content', action: 'rotateBootstrap' },
+      source: window,
+      origin: window.location.origin,
+    }))
+    const resetChallenge = postSpy.mock.calls.at(-1)?.[0]?.challenge
+    expect(resetChallenge).toMatch(/^[0-9a-f]{64}$/)
+    const resetAuthorization = await makeBootstrapProof('default', 'default_nonce', resetChallenge)
+    dispatchInit({
+      sessionId: 'default',
+      nonce: 'default_nonce',
+      ...resetAuthorization,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 25))
+
+    expect(window.localStorage.getItem('profile-key')).toBeNull()
+    expect(document.cookie).toBe('')
     postSpy.mockRestore()
   })
 })

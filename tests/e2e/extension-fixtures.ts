@@ -11,6 +11,8 @@ export type ExtensionFixtures = {
   context: BrowserContext
   extensionId: string
   mockServerUrl: string
+  /** A DNS hostname mapped to the mock server but not treated as localhost. */
+  insecureHttpServerUrl: string
   popupUrl: string
   optionsUrl: string
   /** Popup page with chrome.tabs.query mocked so popup.ts initializes fully */
@@ -32,6 +34,7 @@ export const test = base.extend<ExtensionFixtures>({
       args: [
         `--disable-extensions-except=${EXTENSION_PATH}`,
         `--load-extension=${EXTENSION_PATH}`,
+        '--host-resolver-rules=MAP session-shift.test 127.0.0.1',
       ],
     })
     await use(ctx)
@@ -52,6 +55,10 @@ export const test = base.extend<ExtensionFixtures>({
     const { server, url } = startMockCookieServer()
     await use(url)
     await new Promise<void>(resolve => server.close(() => resolve()))
+  },
+
+  insecureHttpServerUrl: async ({ mockServerUrl }, use) => {
+    await use(mockServerUrl.replace('localhost', 'session-shift.test'))
   },
 
   // Convenience URLs

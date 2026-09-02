@@ -7,10 +7,21 @@
   // asynchronously. Default pages keep native APIs during that round trip;
   // isolated pages install empty, fail-closed views immediately when the
   // authenticated profile identity arrives, before exposing profile data.
-  const nativeDocumentCookie = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie');
+  const nativeDocumentCookie = Object.getOwnPropertyDescriptor(document, 'cookie')
+    ?? Object.getOwnPropertyDescriptor(Document.prototype, 'cookie');
   const nativeStorageDescriptors = {
-    localStorage: Object.getOwnPropertyDescriptor(Window.prototype, 'localStorage'),
-    sessionStorage: Object.getOwnPropertyDescriptor(Window.prototype, 'sessionStorage'),
+    localStorage: Object.getOwnPropertyDescriptor(window, 'localStorage')
+      ?? Object.getOwnPropertyDescriptor(Window.prototype, 'localStorage'),
+    sessionStorage: Object.getOwnPropertyDescriptor(window, 'sessionStorage')
+      ?? Object.getOwnPropertyDescriptor(Window.prototype, 'sessionStorage'),
+  };
+  const nativeWindowApiDescriptors = {
+    indexedDB: Object.getOwnPropertyDescriptor(window, 'indexedDB')
+      ?? Object.getOwnPropertyDescriptor(Window.prototype, 'indexedDB'),
+    cookieStore: Object.getOwnPropertyDescriptor(window, 'cookieStore')
+      ?? Object.getOwnPropertyDescriptor(Window.prototype, 'cookieStore'),
+    caches: Object.getOwnPropertyDescriptor(window, 'caches')
+      ?? Object.getOwnPropertyDescriptor(Window.prototype, 'caches'),
   };
   const nativeStorageValues: Partial<Record<'localStorage' | 'sessionStorage', Storage>> = {};
   for (const kind of ['localStorage', 'sessionStorage'] as const) {
@@ -61,6 +72,10 @@
   };
   const P256_PUBLIC_X = 'WBBJCNZvPlR1B70GaUW-FaFHRHVJs_8WU-7JZTSKKQo';
   const P256_PUBLIC_Y = '58WLqE1ehEMRRds74MJmoYMheCXxO3yTOkltWFl77sQ';
+  // Keep these literal strings in the standalone MAIN-world bundle. It cannot
+  // import an ESM helper because the manifest injects it as a classic script.
+  const NAVIGATION_BOOTSTRAP_PAYLOAD_PARAM = '__sessionshift_bootstrap';
+  const NAVIGATION_BOOTSTRAP_PROOF_PARAM = '__sessionshift_bootstrap_sig';
   type P256Point = { x: bigint; y: bigint } | null;
 
   function createBootstrapChallenge(): string {
@@ -407,14 +422,52 @@
     }
   }
 
-  // `crypto.subtle` is unavailable to a MAIN-world script on some insecure
-  // HTTP origins. Never leave the native page APIs exposed in that case: DNR
-  // still protects network cookies, while these synchronous APIs must fail
-  // closed until a verifiable profile bootstrap is possible.
-  if (!hasBootstrapCrypto) installFailClosedApis();
-  void bootstrapVerifyKeyPromise.then((verifyKey) => {
-    if (!verifyKey) installFailClosedApis();
-  });
+  function restoreNativeApis(): void {
+    for (const kind of ['localStorage', 'sessionStorage'] as const) {
+      const descriptor = nativeStorageDescriptors[kind];
+      try {
+        if (descriptor) Object.defineProperty(window, kind, descriptor);
+        else delete (window as unknown as Record<string, unknown>)[kind];
+      } catch { /* noop */ }
+    }
+    try {
+      if (nativeDocumentCookie) Object.defineProperty(document, 'cookie', nativeDocumentCookie);
+      else delete (document as unknown as Record<string, unknown>).cookie;
+    } catch { /* noop */ }
+    for (const kind of ['indexedDB', 'cookieStore', 'caches'] as const) {
+      const descriptor = nativeWindowApiDescriptors[kind];
+      try {
+        if (descriptor) Object.defineProperty(window, kind, descriptor);
+        else delete (window as unknown as Record<string, unknown>)[kind];
+      } catch { /* noop */ }
+    }
+    activeProfileSessionId = '';
+    activeProfileNonce = '';
+    activeProfilePrefix = '';
+    rebindProfile = null;
+  }
+
+  function verifyNavigationBootstrap(payload: string, proof: string): { sessionId: string; navigationToken: string } | null {
+    try {
+      const signed = trustedJsonParse(payload) as {
+        version?: number
+        sessionId?: string
+        navigationToken?: string
+      };
+      if (
+        signed.version !== 1 ||
+        typeof signed.sessionId !== 'string' ||
+        !signed.sessionId ||
+        signed.sessionId === 'default' ||
+        typeof signed.navigationToken !== 'string' ||
+        !signed.navigationToken
+      ) return null;
+      if (!verifyP256EcdsaSha256(decodeBase64(proof), encodeUtf8(payload))) return null;
+      return { sessionId: signed.sessionId, navigationToken: signed.navigationToken };
+    } catch {
+      return null;
+    }
+  }
 
   // 1. Wait for sessionId and nonce from content.ts (ISOLATED world) via postMessage.
   // Using postMessage instead of DOM attributes avoids the brief window where
@@ -426,7 +479,6 @@
       event.data.source !== 'ext-content' ||
       event.data.action !== 'initNonce' ||
       typeof event.data.sessionId !== 'string' ||
-      event.data.sessionId === 'default' ||
       typeof event.data.nonce !== 'string' ||
       typeof event.data.bootstrapProof !== 'string' ||
       typeof event.data.bootstrapProofPayload !== 'string'
@@ -446,6 +498,10 @@
     }
     bootstrapVerificationInFlight = false;
     bootstrapChallengeConsumed = true;
+    if (event.data.sessionId === 'default') {
+      restoreNativeApis();
+      return;
+    }
     const cookieEntries = Array.isArray(event.data.cookieEntries) ? event.data.cookieEntries : [];
     const cookieStr = typeof event.data.cookieStr === 'string' ? event.data.cookieStr : '';
     // Install the fail-closed views and replace them with profile-scoped
@@ -478,6 +534,25 @@
   // The isolated content script installs its request listener before awaiting
   // the service worker response. This makes the first bootstrap deterministic
   // even when the MAIN-world script runs first at document_start.
+  // A signed DNR carrier is available before document_start scripts execute.
+  // Initialize the synchronous APIs now; the regular challenge-bound channel
+  // still supplies current cookies and can authoritatively rebind or reset us.
+  let navigationBootstrap: { sessionId: string; navigationToken: string } | null = null;
+  try {
+    const url = new URL(window.location.href);
+    const payload = url.searchParams.get(NAVIGATION_BOOTSTRAP_PAYLOAD_PARAM);
+    const proof = url.searchParams.get(NAVIGATION_BOOTSTRAP_PROOF_PARAM);
+    if (payload && proof) navigationBootstrap = verifyNavigationBootstrap(payload, proof);
+    if (navigationBootstrap) {
+      url.searchParams.delete(NAVIGATION_BOOTSTRAP_PAYLOAD_PARAM);
+      url.searchParams.delete(NAVIGATION_BOOTSTRAP_PROOF_PARAM);
+      try { history.replaceState(history.state, '', url.href); } catch { /* URL cleanup is best effort. */ }
+      initialize(navigationBootstrap.sessionId, navigationBootstrap.navigationToken);
+    }
+  } catch {
+    // Missing/malformed page URLs remain native default until the ordinary
+    // challenge-bound bootstrap selects an isolated Profile.
+  }
   postBootstrapRequest();
 
   type CookieViewEntry = {

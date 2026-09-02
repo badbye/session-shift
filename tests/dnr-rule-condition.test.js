@@ -94,6 +94,29 @@ describe('updateDNRRulesForTab', () => {
     expect(responseRules.every((rule) => rule.condition.resourceTypes.includes('main_frame'))).toBe(true)
   })
 
+  it('adds a tab-scoped signed startup carrier for every HTTP(S) main-frame navigation', async () => {
+    await setupProfile({
+      sessionId: 'session_startup',
+      tabId: 101,
+      tabUrl: 'http://example.test/app',
+    })
+
+    await updateDNRRulesForTab(101, 'session_startup')
+
+    const [{ addRules }] = chrome.declarativeNetRequest.updateSessionRules.mock.calls.at(-1)
+    const carrier = addRules.find((rule) => rule.action.redirect?.transform?.queryTransform)
+    expect(carrier).toBeDefined()
+    expect(carrier.condition).toMatchObject({
+      urlFilter: '|http',
+      resourceTypes: ['main_frame'],
+      tabIds: [101],
+    })
+    expect(carrier.action.redirect.transform.queryTransform.addOrReplaceParams.map((entry) => entry.key)).toEqual([
+      '__sessionshift_bootstrap',
+      '__sessionshift_bootstrap_sig',
+    ])
+  })
+
   it('strips same-site subresource cookies too while response-side stripping stays strict', async () => {
     await setupProfile({
       sessionId: 'session_github',

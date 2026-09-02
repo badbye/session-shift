@@ -55,14 +55,15 @@
   ): Promise<void> {
     const transition = bootstrapTransition.then(async () => {
       if (sessionId === 'default') {
-        // Default documents never initialize MAIN-world isolation proxies.
-        // The UI reloads after a profile reset, so the new document retains the
-        // browser's native APIs without a destructive restore step.
+        // A default identity is also signed and delivered to MAIN. This matters
+        // when a stale Profile carrier is removed while a document is loading:
+        // MAIN can restore native APIs only after authenticating that reset.
         activeSessionId = 'default';
         activeCookieStr = '';
         activeCookieEntries = [];
-        activeNonce = '';
+        activeNonce = authorization?.bootstrapToken ?? '';
         isolationBootstrapped = false;
+        if (authorization) postInitNonce('default', activeNonce, '', [], authorization);
         return;
       }
       if (!authorization) return;

@@ -22,7 +22,24 @@ export function startMockCookieServer(): MockCookieServer {
     const port = (server.address() as net.AddressInfo).port
     const url = new URL(req.url!, `http://localhost:${port}`)
 
-    if (url.pathname === '/set') {
+    if (url.pathname === '/startup-api') {
+      // The first inline script runs after document_start content scripts. It
+      // deliberately calls indexedDB.open synchronously, matching the OpenCode
+      // startup path that previously threw SecurityError on ordinary HTTP.
+      res.writeHead(200, { 'Content-Type': 'text/html' })
+      res.end(`<!doctype html><script>
+        window.__sessionShiftStartup = { secure: isSecureContext, idbError: null };
+        try {
+          localStorage.setItem('startup-key', 'profile-value');
+          const request = indexedDB.open('startup-db');
+          window.__sessionShiftStartup.idbRequest = !!request;
+          request.onerror = () => { window.__sessionShiftStartup.idbError = request.error?.name || 'request-error'; };
+          request.onsuccess = () => { window.__sessionShiftStartup.idbReady = true; };
+        } catch (error) {
+          window.__sessionShiftStartup.idbError = error && error.name || String(error);
+        }
+      </script>`)
+    } else if (url.pathname === '/set') {
       const cookies = [...url.searchParams].map(([n, v]) => `${n}=${v}; Path=/`)
       res.setHeader('Set-Cookie', cookies)
       res.writeHead(302, { Location: '/cookies' })

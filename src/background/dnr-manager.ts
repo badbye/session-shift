@@ -17,8 +17,15 @@ import {
   AUTH_BRIDGE_DNR_SETTLE_MS,
   AUTH_BRIDGE_HEADER,
 } from '../lib/auth-transition-bridge.js';
+import {
+  createNavigationBootstrapAuthorization,
+  NAVIGATION_BOOTSTRAP_PAYLOAD_PARAM,
+  NAVIGATION_BOOTSTRAP_PROOF_PARAM,
+} from '../lib/navigation-bootstrap.js';
 
-const MAX_DNR_RULES_PER_TAB = 100;
+// Two rules are reserved for the synchronous navigation identity carrier.
+// Cookie rules retain a fixed per-tab budget rather than competing with it.
+const MAX_DNR_RULES_PER_TAB = 102;
 // Keep each tab's allocated IDs compact. Spacing a tab's 100 IDs one million
 // apart would reserve a 100M interval per tab and run out after ~22 tabs.
 const DNR_RULE_ID_STRIDE = 1;
@@ -217,9 +224,10 @@ async function updateDNRRulesForTabImpl(
   // Response-side stripping includes navigations. webRequest still captures the
   // original Set-Cookie header into the profile store, but Chrome must never
   // commit that response into the shared/default cookie jar.
+  const navigationAuthorization = await createNavigationBootstrapAuthorization(sessionId);
   const addRules = buildDnrRulesForCookieStore({
     tabId,
-    ruleIds,
+    ruleIds: ruleIds.slice(0, -2),
     boundHost,
     scheme,
     store,
@@ -232,6 +240,34 @@ async function updateDNRRulesForTabImpl(
     responseStripResourceTypes: RESPONSE_RESOURCE_TYPES,
     bridgeNavigationUrl: bridgeNavigationStrips.get(tabId) ?? null,
   });
+
+  if (navigationAuthorization) {
+    // `|http` is a start anchor which covers both http and https. The rule is
+    // tab-scoped and main-frame-only, so it cannot affect unbound tabs or
+    // subresource URLs. `addOrReplace` makes redirect follow-ups idempotent.
+    addRules.push({
+      id: ruleIds[ruleIds.length - 2],
+      priority: 1,
+      action: {
+        type: 'redirect',
+        redirect: {
+          transform: {
+            queryTransform: {
+              addOrReplaceParams: [
+                { key: NAVIGATION_BOOTSTRAP_PAYLOAD_PARAM, value: navigationAuthorization.payload },
+                { key: NAVIGATION_BOOTSTRAP_PROOF_PARAM, value: navigationAuthorization.proof },
+              ],
+            },
+          },
+        },
+      },
+      condition: {
+        urlFilter: '|http',
+        resourceTypes: ['main_frame'],
+        tabIds: [tabId],
+      },
+    });
+  }
 
   // Atomic remove+add: Chrome processes the removal before the addition within a
   // single call, so concurrent callers for the same tab can't collide on rule ID.
